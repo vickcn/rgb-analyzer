@@ -26,6 +26,11 @@
   gap: 12px;
 }
 
+.clear-options {
+  display: flex;
+  gap: 8px;
+}
+
 .stat-item {
   font-size: 0.9rem;
   color: #666;
@@ -48,6 +53,24 @@
 .clear-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(255, 107, 107, 0.4);
+}
+
+.clear-old-button {
+  background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(243, 156, 18, 0.3);
+}
+
+.clear-old-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(243, 156, 18, 0.4);
 }
 
 .no-history {

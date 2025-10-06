@@ -5,9 +5,10 @@ import './HistoryPanel.css';
 interface HistoryPanelProps {
   history: RGBData[];
   onClear: () => void;
+  onClearOld: (minutes: number) => void;
 }
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onClear }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onClear, onClearOld }) => {
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('zh-TW', {
       hour: '2-digit',
@@ -47,12 +48,22 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onClear }) => {
           <span className="stat-item">
             總計: {history.length} 筆
           </span>
-          <button 
-            className="clear-button"
-            onClick={onClear}
-          >
-            🗑️ 清除
-          </button>
+          <div className="clear-options">
+            <button 
+              className="clear-button"
+              onClick={onClear}
+              title="清除所有記錄"
+            >
+              🗑️ 清除全部
+            </button>
+            <button 
+              className="clear-old-button"
+              onClick={() => onClearOld(10)}
+              title="清除 10 分鐘前的記錄"
+            >
+              ⏰ 清除舊記錄
+            </button>
+          </div>
         </div>
       </div>
 

@@ -38,6 +38,11 @@ function App() {
     setDetectionHistory([]);
   };
 
+  const clearOldHistory = (minutes: number = 10) => {
+    const cutoffTime = Date.now() - minutes * 60 * 1000;
+    setDetectionHistory(prev => prev.filter(item => item.timestamp > cutoffTime));
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -69,12 +74,13 @@ function App() {
           />
         </div>
 
-        <div className="history-section">
-          <HistoryPanel
-            history={detectionHistory}
-            onClear={clearHistory}
-          />
-        </div>
+            <div className="history-section">
+              <HistoryPanel
+                history={detectionHistory}
+                onClear={clearHistory}
+                onClearOld={clearOldHistory}
+              />
+            </div>
       </main>
 
       <footer className="app-footer">
