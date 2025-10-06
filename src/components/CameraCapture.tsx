@@ -251,7 +251,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 
     log('🎬 開始第一幀處理');
     processFrame();
-  }, [isActive, onCameraToggle]);
+  }, [isActive, onCameraToggle, detectionSettings.enableDetailedLogs, onRGBDetected]);
 
   // 處理攝影機狀態變化
   useEffect(() => {
@@ -263,7 +263,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       console.log('🛑 停止攝影機...');
       stopCamera();
     }
-  }, [isActive, initializeCamera, stopCamera, startProcessing]);
+  }, [isActive, initializeCamera, stopCamera]);
 
   // 清理資源
   useEffect(() => {
