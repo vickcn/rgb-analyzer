@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import CameraCapture from './components/CameraCapture';
 import RGBDisplay from './components/RGBDisplay';
 import DetectionControls from './components/DetectionControls';

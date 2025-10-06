@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { RGBData } from '../App';
 import { processImageForRGB } from '../utils/opencvProcessor';
 import './CameraCapture.css';
@@ -29,9 +29,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const animationFrameRef = useRef<number>();
   const [error, setError] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const lastProcessTime = useRef<number>(0);
 
   // 初始化攝影機
-  const initializeCamera = async () => {
+  const initializeCamera = useCallback(async () => {
     try {
       setError('');
       
@@ -58,6 +59,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         });
         
         onCameraToggle(true);
+        console.log('📷 攝影機初始化完成，開始處理');
         startProcessing();
       }
     } catch (err) {
@@ -65,10 +67,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       setError('無法存取攝影機，請確認已授予攝影機權限');
       onCameraToggle(false);
     }
-  };
+  }, [onCameraToggle]);
 
   // 停止攝影機
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -84,19 +86,43 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     
     onCameraToggle(false);
     setIsProcessing(false);
-  };
+  }, [onCameraToggle]);
 
   // 開始圖像處理
   const startProcessing = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      console.log('❌ 無法開始處理：video 或 canvas 不存在');
+      return;
+    }
     
+    console.log('🚀 開始圖像處理循環');
     setIsProcessing(true);
     
     const processFrame = async () => {
+      console.log('🔄 processFrame 被調用，isActive:', isActive);
+      
       if (!videoRef.current || !canvasRef.current || !isActive) {
+        console.log('❌ 停止處理：video/canvas 不存在或攝影機未啟動');
         setIsProcessing(false);
         return;
       }
+
+      // 檢查影片是否準備好
+      if (videoRef.current.readyState < 2) {
+        console.log('⏳ 影片尚未準備好，readyState:', videoRef.current.readyState);
+        animationFrameRef.current = requestAnimationFrame(processFrame);
+        return;
+      }
+
+      // 限制處理頻率，每 200ms 處理一次
+      const now = Date.now();
+      if (now - lastProcessTime.current < 200) {
+        animationFrameRef.current = requestAnimationFrame(processFrame);
+        return;
+      }
+      lastProcessTime.current = now;
+      
+      console.log('📹 處理影格...', new Date().toLocaleTimeString());
 
       try {
         const canvas = canvasRef.current;
@@ -108,18 +134,24 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         // 設定畫布尺寸
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+        console.log('📐 畫布尺寸設定為:', canvas.width, 'x', canvas.height);
 
         // 繪製當前影格
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        console.log('🖼️ 影格繪製完成');
 
         // 使用 OpenCV 處理圖像
+        console.log('🔧 調用 OpenCV 處理函數...');
         const rgbData = await processImageForRGB(
           canvas,
           detectionSettings
         );
 
         if (rgbData) {
+          console.log('✅ 檢測到 RGB 數據:', rgbData.hex);
           onRGBDetected(rgbData);
+        } else {
+          console.log('❌ 未檢測到 RGB 數據');
         }
 
         // 繼續處理下一幀
@@ -130,6 +162,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       }
     };
 
+    console.log('🎬 開始第一幀處理');
     processFrame();
   };
 
@@ -140,14 +173,14 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     } else if (!isActive && streamRef.current) {
       stopCamera();
     }
-  }, [isActive]);
+  }, [isActive, initializeCamera, stopCamera]);
 
   // 清理資源
   useEffect(() => {
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   return (
     <div className="camera-capture">
