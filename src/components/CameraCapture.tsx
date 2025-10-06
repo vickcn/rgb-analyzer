@@ -14,6 +14,7 @@ interface CameraCaptureProps {
     blurKernel: number;
     enableEdgeDetection: boolean;
     enableColorDetection: boolean;
+    enableDetailedLogs: boolean;
   };
 }
 
@@ -33,10 +34,17 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const lastFrameData = useRef<ImageData | null>(null);
   const frameChangeThreshold = useRef<number>(0.1); // 10% 的像素變化閾值
 
+  // Log 函數，根據設定決定是否輸出
+  const log = (message: string, ...args: any[]) => {
+    if (detectionSettings.enableDetailedLogs) {
+      console.log(message, ...args);
+    }
+  };
+
   // 檢測畫面變動
   const detectFrameChange = (currentFrame: ImageData, lastFrame: ImageData | null): boolean => {
     if (!lastFrame) {
-      console.log('🆕 首次影格，需要檢測');
+      log('🆕 首次影格，需要檢測');
       return true;
     }
 
@@ -63,7 +71,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     }
 
     const changeRatio = changedPixels / (totalPixels / 10);
-    console.log(`📊 畫面變化率: ${(changeRatio * 100).toFixed(1)}%`);
+    log(`📊 畫面變化率: ${(changeRatio * 100).toFixed(1)}%`);
     
     return changeRatio > frameChangeThreshold.current;
   };
@@ -95,12 +103,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           }
         });
         
-        console.log('📷 攝影機初始化完成，設定狀態為 true');
+        log('📷 攝影機初始化完成，設定狀態為 true');
         onCameraToggle(true);
         
         // 等待狀態更新後再開始處理
         setTimeout(() => {
-          console.log('📷 攝影機狀態已更新，開始處理');
+          log('📷 攝影機狀態已更新，開始處理');
           startProcessing();
         }, 100);
       }
@@ -145,7 +153,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     const processFrame = async () => {
       // 直接檢查攝影機狀態，不依賴 isActive
       const isCameraReady = videoRef.current && canvasRef.current && streamRef.current;
-      console.log('🔄 processFrame 被調用，攝影機就緒:', isCameraReady);
+      log('🔄 processFrame 被調用，攝影機就緒:', isCameraReady);
       
       if (!isCameraReady) {
         console.log('❌ 停止處理：攝影機未就緒');
@@ -156,14 +164,14 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       // 限制處理頻率，每 500ms 處理一次（降低頻率）
       const now = Date.now();
       if (now - lastProcessTime.current < 500) {
-        console.log('⏱️ 跳過處理，等待時間未到');
+        log('⏱️ 跳過處理，等待時間未到');
         animationFrameRef.current = requestAnimationFrame(processFrame);
         return;
       }
       lastProcessTime.current = now;
       
       frameCount++;
-      console.log('📹 處理影格 #' + frameCount, new Date().toLocaleTimeString());
+      log('📹 處理影格 #' + frameCount, new Date().toLocaleTimeString());
 
       try {
         const canvas = canvasRef.current;
@@ -175,11 +183,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         // 設定畫布尺寸
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        console.log('📐 畫布尺寸設定為:', canvas.width, 'x', canvas.height);
+        log('📐 畫布尺寸設定為:', canvas.width, 'x', canvas.height);
 
         // 繪製當前影格
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        console.log('🖼️ 影格繪製完成');
+        log('🖼️ 影格繪製完成');
         
         // 檢測畫面變動
         const currentFrameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -187,13 +195,13 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         lastFrameData.current = currentFrameData;
         
         if (!hasSignificantChange) {
-          console.log('😴 畫面無顯著變化，跳過檢測');
+          log('😴 畫面無顯著變化，跳過檢測');
           // 繼續處理下一幀
           animationFrameRef.current = requestAnimationFrame(processFrame);
           return;
         }
         
-        console.log('🔄 畫面有顯著變化，開始檢測');
+        log('🔄 畫面有顯著變化，開始檢測');
         
         // 繪製檢測框（中心點）
         const centerX = canvas.width / 2;
@@ -216,24 +224,24 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         ctx.lineTo(centerX, centerY + 20);
         ctx.stroke();
         
-        console.log('🎯 檢測框已繪製');
+        log('🎯 檢測框已繪製');
 
         // 使用 OpenCV 處理圖像
-        console.log('🔧 調用 OpenCV 處理函數...');
+        log('🔧 調用 OpenCV 處理函數...');
         const rgbData = await processImageForRGB(
           canvas,
           detectionSettings
         );
 
         if (rgbData) {
-          console.log('✅ 檢測到 RGB 數據:', rgbData.hex);
+          log('✅ 檢測到 RGB 數據:', rgbData.hex);
           onRGBDetected(rgbData);
         } else {
-          console.log('❌ 未檢測到 RGB 數據');
+          log('❌ 未檢測到 RGB 數據');
         }
 
         // 繼續處理下一幀
-        console.log('➡️ 準備處理下一幀');
+        log('➡️ 準備處理下一幀');
         animationFrameRef.current = requestAnimationFrame(processFrame);
       } catch (err) {
         console.error('❌ 圖像處理錯誤:', err);
@@ -241,7 +249,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       }
     };
 
-    console.log('🎬 開始第一幀處理');
+    log('🎬 開始第一幀處理');
     processFrame();
   }, [isActive, onCameraToggle]);
 
@@ -327,7 +335,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             value={frameChangeThreshold.current}
             onChange={(e) => {
               frameChangeThreshold.current = parseFloat(e.target.value);
-              console.log('🎛️ 敏感度調整為:', (frameChangeThreshold.current * 100).toFixed(1) + '%');
+              log('🎛️ 敏感度調整為:', (frameChangeThreshold.current * 100).toFixed(1) + '%');
             }}
           />
           <span>{(frameChangeThreshold.current * 100).toFixed(1)}%</span>

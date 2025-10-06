@@ -42,6 +42,7 @@ interface ProcessingSettings {
   blurKernel: number;
   enableEdgeDetection: boolean;
   enableColorDetection: boolean;
+  enableDetailedLogs: boolean;
 }
 
 // RGB 轉 HEX
@@ -89,24 +90,31 @@ export const processImageForRGB = async (
   settings: ProcessingSettings
 ): Promise<RGBData | null> => {
   try {
-    console.log('🔍 開始圖像處理...', new Date().toLocaleTimeString());
+    // Log 函數，根據設定決定是否輸出
+    const log = (message: string, ...args: any[]) => {
+      if (settings.enableDetailedLogs) {
+        console.log(message, ...args);
+      }
+    };
+
+    log('🔍 開始圖像處理...', new Date().toLocaleTimeString());
     
     // 確保 OpenCV 已載入
     if (!window.cv) {
-      console.log('📦 載入 OpenCV.js...');
+      log('📦 載入 OpenCV.js...');
       await loadOpenCV();
     }
 
     const cv = window.cv;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      console.log('❌ 無法獲取 Canvas 上下文');
+      log('❌ 無法獲取 Canvas 上下文');
       return null;
     }
 
     // 獲取圖像數據
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    console.log('📸 圖像尺寸:', canvas.width, 'x', canvas.height);
+    log('📸 圖像尺寸:', canvas.width, 'x', canvas.height);
     
     // 創建 OpenCV Mat 物件
     const src = cv.matFromImageData(imageData);
@@ -117,7 +125,7 @@ export const processImageForRGB = async (
     const blurred = new cv.Mat();
 
     try {
-      console.log('🔧 開始 OpenCV 處理...');
+      log('🔧 開始 OpenCV 處理...');
       // 轉換為灰階
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
@@ -125,7 +133,7 @@ export const processImageForRGB = async (
       cv.GaussianBlur(gray, blurred, new cv.Size(settings.blurKernel, settings.blurKernel), 0, 0, cv.BORDER_DEFAULT);
 
       // 簡化處理：直接使用中心點檢測
-      console.log('🎯 使用中心點檢測模式');
+      log('🎯 使用中心點檢測模式');
       const centerMask = cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
       const center = new cv.Point(canvas.width / 2, canvas.height / 2);
       const radius = Math.min(canvas.width, canvas.height) / 4;
@@ -154,16 +162,16 @@ export const processImageForRGB = async (
       }
 
       if (bestRGB) {
-        console.log('🎨 檢測到 RGB:', bestRGB.hex, '亮度:', Math.round(maxIntensity));
+        log('🎨 檢測到 RGB:', bestRGB.hex, '亮度:', Math.round(maxIntensity));
       } else {
-        console.log('❌ 未檢測到有效 RGB 值');
+        log('❌ 未檢測到有效 RGB 值');
       }
 
       return bestRGB;
 
     } finally {
       // 清理所有 Mat 物件
-      console.log('🧹 清理 OpenCV 記憶體...');
+      log('🧹 清理 OpenCV 記憶體...');
       try {
         src.delete();
         gray.delete();
@@ -171,7 +179,7 @@ export const processImageForRGB = async (
         contours.delete();
         hierarchy.delete();
         blurred.delete();
-        console.log('✅ 記憶體清理完成');
+        log('✅ 記憶體清理完成');
       } catch (cleanupError) {
         console.error('❌ 記憶體清理錯誤:', cleanupError);
       }
@@ -190,5 +198,6 @@ export const defaultProcessingSettings: ProcessingSettings = {
   minArea: 100,
   blurKernel: 5,
   enableEdgeDetection: true,
-  enableColorDetection: true
+  enableColorDetection: true,
+  enableDetailedLogs: false
 };

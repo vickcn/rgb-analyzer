@@ -9,6 +9,7 @@ interface DetectionControlsProps {
     blurKernel: number;
     enableEdgeDetection: boolean;
     enableColorDetection: boolean;
+    enableDetailedLogs: boolean;
   };
   onSettingsChange: (settings: any) => void;
 }
@@ -37,7 +38,8 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
       minArea: 100,
       blurKernel: 5,
       enableEdgeDetection: true,
-      enableColorDetection: true
+      enableColorDetection: true,
+      enableDetailedLogs: false
     });
   };
 
@@ -97,6 +99,16 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
                     />
                     <span className="toggle-label">色光檢測</span>
                     <span className="toggle-description">檢測高亮度色光區域</span>
+                  </label>
+                  
+                  <label className="toggle-item">
+                    <input
+                      type="checkbox"
+                      checked={settings.enableDetailedLogs}
+                      onChange={(e) => updateSetting('enableDetailedLogs', e.target.checked)}
+                    />
+                    <span className="toggle-label">詳細 Log</span>
+                    <span className="toggle-description">顯示詳細的檢測過程 log</span>
                   </label>
                 </div>
               </div>

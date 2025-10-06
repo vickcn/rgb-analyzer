@@ -25,7 +25,8 @@ function App() {
     minArea: 100,
     blurKernel: 5,
     enableEdgeDetection: true,
-    enableColorDetection: true
+    enableColorDetection: true,
+    enableDetailedLogs: false // 生產環境預設關閉詳細 log
   });
 
   const handleRGBDetected = (rgbData: RGBData) => {

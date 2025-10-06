@@ -46,6 +46,8 @@ tmp/
 tmp*/
 imgData/
 issues/
+*output/
 .bak
 .txt
 
+.vercel
