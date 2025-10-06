@@ -1,0 +1,126 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.app-header {
+  text-align: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.app-header h1 {
+  color: white;
+  font-size: 2rem;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.app-header p {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+}
+
+.app-main {
+  flex: 1;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.camera-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.controls-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.display-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.history-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.app-footer {
+  text-align: center;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+}
+
+/* 平板和桌面端佈局 */
+@media (min-width: 768px) {
+  .app-main {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+  }
+  
+  .camera-section {
+    grid-column: 1 / -1;
+  }
+  
+  .display-section {
+    grid-column: 1;
+  }
+  
+  .history-section {
+    grid-column: 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: auto auto;
+  }
+  
+  .camera-section {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+  
+  .controls-section {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  
+  .display-section {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  
+  .history-section {
+    grid-column: 2;
+    grid-row: 3;
+  }
+}

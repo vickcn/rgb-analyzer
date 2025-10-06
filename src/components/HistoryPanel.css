@@ -1,0 +1,253 @@
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.history-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.history-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-item {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.clear-button {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(255, 107, 107, 0.3);
+}
+
+.clear-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(255, 107, 107, 0.4);
+}
+
+.no-history {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.no-history-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.no-history p {
+  font-size: 16px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.no-history small {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.history-item:hover {
+  background: #e9ecef;
+  transform: translateX(2px);
+}
+
+.history-time {
+  font-size: 0.8rem;
+  color: #666;
+  font-family: 'Courier New', monospace;
+  min-width: 70px;
+  font-weight: 500;
+}
+
+.history-color {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.history-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.history-values {
+  flex: 1;
+}
+
+.history-hex {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.history-rgb {
+  font-size: 0.75rem;
+  color: #666;
+  font-family: 'Courier New', monospace;
+}
+
+.copy-history-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-history-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+}
+
+.history-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  margin-top: auto;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 0.75rem;
+  color: #667eea;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #333;
+}
+
+/* 手機端優化 */
+@media (max-width: 768px) {
+  .history-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .history-stats {
+    justify-content: space-between;
+  }
+  
+  .history-item {
+    padding: 10px;
+    gap: 8px;
+  }
+  
+  .history-time {
+    min-width: 60px;
+    font-size: 0.75rem;
+  }
+  
+  .history-swatch {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .history-hex {
+    font-size: 0.85rem;
+  }
+  
+  .history-rgb {
+    font-size: 0.7rem;
+  }
+  
+  .copy-history-button {
+    min-width: 28px;
+    height: 28px;
+    padding: 4px 6px;
+  }
+  
+  .history-summary {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .summary-item {
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: left;
+  }
+}

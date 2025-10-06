@@ -1,0 +1,170 @@
+.camera-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.camera-toggle {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.camera-toggle:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.camera-toggle:active {
+  transform: translateY(0);
+}
+
+.camera-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.camera-toggle.active {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.processing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #667eea;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  color: #d63031;
+}
+
+.error-message button {
+  background: #d63031;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.camera-preview {
+  position: relative;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-preview {
+  width: 100%;
+  height: auto;
+  max-height: 400px;
+  object-fit: cover;
+}
+
+.processing-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.camera-placeholder {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 40px 20px;
+}
+
+.placeholder-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.camera-placeholder p {
+  font-size: 18px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.camera-placeholder small {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.camera-info {
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  color: #667eea;
+}
+
+.camera-info p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+/* 手機端優化 */
+@media (max-width: 768px) {
+  .camera-preview {
+    min-height: 250px;
+  }
+  
+  .video-preview {
+    max-height: 300px;
+  }
+  
+  .camera-toggle {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+  
+  .placeholder-icon {
+    font-size: 3rem;
+  }
+  
+  .camera-placeholder p {
+    font-size: 16px;
+  }
+}
