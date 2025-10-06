@@ -108,6 +108,8 @@
   left: 0;
   width: 100%;
   height: 100%;
+  display: block;
+  z-index: 10;
 }
 
 .camera-placeholder {
@@ -143,6 +145,50 @@
 .camera-info p {
   margin: 4px 0;
   font-size: 14px;
+}
+
+.motion-sensitivity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.motion-sensitivity label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.motion-sensitivity input[type="range"] {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #e9ecef;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.motion-sensitivity input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #667eea;
+  cursor: pointer;
+}
+
+.motion-sensitivity span {
+  font-size: 12px;
+  color: #667eea;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
 }
 
 /* 手機端優化 */

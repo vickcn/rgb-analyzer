@@ -11,6 +11,35 @@
   margin-bottom: 8px;
 }
 
+.controls-header.collapsible {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.main-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.main-panel-header:hover {
+  background: rgba(102, 126, 234, 0.15);
+  transform: translateY(-1px);
+}
+
+.main-panel-header h3 {
+  margin: 0;
+  color: #667eea;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
 .controls-header h3 {
   margin: 0;
   color: #333;
@@ -54,6 +83,63 @@
   color: #495057;
   font-size: 1rem;
   font-weight: 600;
+}
+
+/* 可摺疊控制組 */
+.control-group.collapsible {
+  overflow: hidden;
+}
+
+.control-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 0;
+  transition: background-color 0.2s ease;
+}
+
+.control-group-header:hover {
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: -8px -12px;
+}
+
+.control-group-header h4 {
+  margin: 0;
+  color: #495057;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.collapse-icon {
+  font-size: 0.8rem;
+  color: #667eea;
+  transition: transform 0.3s ease;
+  user-select: none;
+}
+
+.collapse-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.control-group-content {
+  padding-top: 16px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    padding-top: 16px;
+  }
 }
 
 .toggle-controls {
