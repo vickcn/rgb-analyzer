@@ -43,6 +43,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const [lastRGB, setLastRGB] = useState<RGBData | null>(null);
   // ROI 使用「容器內本地座標」(左上角為 0,0)
   const [roi, setRoi] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  // ROI 大小控制（用於觸控模式）
+  const [roiSize, setRoiSize] = useState<number>(25); // 預設 25% 的畫面大小
   const roiRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const draggingRef = useRef<{ type: 'move' | 'resize'; offsetX: number; offsetY: number } | null>(null);
   const lastProcessTime = useRef<number>(0);
@@ -613,8 +615,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const startX = e.clientX - rect.left; // 轉為容器本地座標
           const startY = e.clientY - rect.top;
           if (!roi) {
-            // 新建 ROI：以當前點為中心建立預設大小（較易於觸控/拖曳）
-            const size = Math.min(rect.width, rect.height) / 4;
+            // 新建 ROI：以當前點為中心建立預設大小（使用 roiSize 設定）
+            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
             const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
             const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
             const newRoi = { x, y, width: size, height: size };
@@ -663,8 +665,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const startY = touch.clientY - rect.top;
           e.preventDefault();
           if (!roi) {
-            // 觸控新建 ROI：預設大小置中於觸點
-            const size = Math.min(rect.width, rect.height) / 4;
+            // 觸控新建 ROI：使用 roiSize 設定的大小置中於觸點
+            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
             const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
             const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
             setRoi({ x, y, width: size, height: size });
@@ -712,7 +714,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const localY = e.clientY - rect.top;
           if (!roi) {
             // 若尚未建立 ROI，先建立一個以游標為中心的預設 ROI（本地座標）
-            const size = Math.min(rect.width, rect.height) / 4;
+            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
             const x = Math.max(0, Math.min(localX - size / 2, rect.width - size));
             const y = Math.max(0, Math.min(localY - size / 2, rect.height - size));
             setRoi({ x, y, width: size, height: size });
@@ -816,6 +818,23 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             }}
           />
           <span>{(frameChangeThreshold.current * 100).toFixed(1)}%</span>
+        </div>
+        <div className="roi-size-control">
+          <label>檢測框大小:</label>
+          <input
+            type="range"
+            min="10"
+            max="50"
+            step="5"
+            value={roiSize}
+            onChange={(e) => {
+              const newSize = parseInt(e.target.value);
+              setRoiSize(newSize);
+              log('📐 檢測框大小調整為:', newSize + '%');
+            }}
+          />
+          <span>{roiSize}%</span>
+          <small>（只支援觸控模式）</small>
         </div>
       </div>
     </div>
