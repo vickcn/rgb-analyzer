@@ -267,16 +267,66 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       // 繪製 ROI 框（手動 ROI 或預設 ROI）
       let roiCanvas: { x: number; y: number; width: number; height: number } | null = null;
       if (roi && containerRef.current) {
-        // 手動 ROI：從容器座標轉換到 Canvas 座標
+        // 手動 ROI：從容器座標轉換到 Canvas 座標（考慮 object-fit: contain）
         const canvasRect = sourceCanvas.getBoundingClientRect();
-        const scaleX = sourceCanvas.width / canvasRect.width;
-        const scaleY = sourceCanvas.height / canvasRect.height;
-        roiCanvas = {
-          x: Math.max(0, Math.round(roi.x * scaleX)),
-          y: Math.max(0, Math.round(roi.y * scaleY)),
-          width: Math.max(1, Math.round(roi.width * scaleX)),
-          height: Math.max(1, Math.round(roi.height * scaleY))
-        };
+        const video = videoRef.current;
+        
+        if (video) {
+          // 計算 video 在 container 中的實際顯示區域
+          const videoAspectRatio = video.videoWidth / video.videoHeight;
+          const containerAspectRatio = canvasRect.width / canvasRect.height;
+          
+          let displayWidth, displayHeight, displayX, displayY;
+          
+          if (videoAspectRatio > containerAspectRatio) {
+            displayWidth = canvasRect.width;
+            displayHeight = canvasRect.width / videoAspectRatio;
+            displayX = 0;
+            displayY = (canvasRect.height - displayHeight) / 2;
+          } else {
+            displayHeight = canvasRect.height;
+            displayWidth = canvasRect.height * videoAspectRatio;
+            displayX = (canvasRect.width - displayWidth) / 2;
+            displayY = 0;
+          }
+          
+          // 檢查 ROI 是否在實際顯示區域內
+          const roiInDisplayArea = roi.x >= displayX && 
+                                  roi.y >= displayY && 
+                                  roi.x + roi.width <= displayX + displayWidth &&
+                                  roi.y + roi.height <= displayY + displayHeight;
+          
+          if (roiInDisplayArea) {
+            // ROI 在顯示區域內，轉換到 Canvas 座標
+            const scaleX = sourceCanvas.width / displayWidth;
+            const scaleY = sourceCanvas.height / displayHeight;
+            roiCanvas = {
+              x: Math.max(0, Math.round((roi.x - displayX) * scaleX)),
+              y: Math.max(0, Math.round((roi.y - displayY) * scaleY)),
+              width: Math.max(1, Math.round(roi.width * scaleX)),
+              height: Math.max(1, Math.round(roi.height * scaleY))
+            };
+          } else {
+            // ROI 超出顯示區域，使用預設 ROI
+            const defaultSize = Math.min(sourceCanvas.width, sourceCanvas.height) / 4;
+            roiCanvas = {
+              x: Math.floor(sourceCanvas.width / 2 - defaultSize / 2),
+              y: Math.floor(sourceCanvas.height / 2 - defaultSize / 2),
+              width: Math.floor(defaultSize),
+              height: Math.floor(defaultSize)
+            };
+          }
+        } else {
+          // 沒有 video 元素，使用簡單轉換
+          const scaleX = sourceCanvas.width / canvasRect.width;
+          const scaleY = sourceCanvas.height / canvasRect.height;
+          roiCanvas = {
+            x: Math.max(0, Math.round(roi.x * scaleX)),
+            y: Math.max(0, Math.round(roi.y * scaleY)),
+            width: Math.max(1, Math.round(roi.width * scaleX)),
+            height: Math.max(1, Math.round(roi.height * scaleY))
+          };
+        }
       } else {
         // 預設 ROI：畫面中央區域（與 processFrame 邏輯一致）
         const defaultSize = Math.min(sourceCanvas.width, sourceCanvas.height) / 4;
@@ -462,14 +512,54 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         const currentRoi = roiRef.current;
         if (currentRoi && containerRef.current) {
           const canvasRect = canvas.getBoundingClientRect();
-          const scaleX = canvas.width / canvasRect.width;
-          const scaleY = canvas.height / canvasRect.height;
-          roiCanvas = {
-            x: Math.max(0, Math.round(currentRoi.x * scaleX)),
-            y: Math.max(0, Math.round(currentRoi.y * scaleY)),
-            width: Math.max(1, Math.round(currentRoi.width * scaleX)),
-            height: Math.max(1, Math.round(currentRoi.height * scaleY))
-          };
+          const videoRect = video.getBoundingClientRect();
+          
+          // 計算 video 在 container 中的實際顯示區域（考慮 object-fit: contain）
+          const videoAspectRatio = video.videoWidth / video.videoHeight;
+          const containerAspectRatio = canvasRect.width / canvasRect.height;
+          
+          let displayWidth, displayHeight, displayX, displayY;
+          
+          if (videoAspectRatio > containerAspectRatio) {
+            // video 較寬，以寬度為準
+            displayWidth = canvasRect.width;
+            displayHeight = canvasRect.width / videoAspectRatio;
+            displayX = 0;
+            displayY = (canvasRect.height - displayHeight) / 2;
+          } else {
+            // video 較高，以高度為準
+            displayHeight = canvasRect.height;
+            displayWidth = canvasRect.height * videoAspectRatio;
+            displayX = (canvasRect.width - displayWidth) / 2;
+            displayY = 0;
+          }
+          
+          // 檢查 ROI 是否在實際顯示區域內
+          const roiInDisplayArea = currentRoi.x >= displayX && 
+                                  currentRoi.y >= displayY && 
+                                  currentRoi.x + currentRoi.width <= displayX + displayWidth &&
+                                  currentRoi.y + currentRoi.height <= displayY + displayHeight;
+          
+          if (roiInDisplayArea) {
+            // ROI 在顯示區域內，轉換到 Canvas 座標
+            const scaleX = canvas.width / displayWidth;
+            const scaleY = canvas.height / displayHeight;
+            roiCanvas = {
+              x: Math.max(0, Math.round((currentRoi.x - displayX) * scaleX)),
+              y: Math.max(0, Math.round((currentRoi.y - displayY) * scaleY)),
+              width: Math.max(1, Math.round(currentRoi.width * scaleX)),
+              height: Math.max(1, Math.round(currentRoi.height * scaleY))
+            };
+          } else {
+            // ROI 超出顯示區域，使用預設 ROI
+            const defaultSize = Math.min(canvas.width, canvas.height) / 4;
+            roiCanvas = {
+              x: Math.floor(canvas.width / 2 - defaultSize / 2),
+              y: Math.floor(canvas.height / 2 - defaultSize / 2),
+              width: Math.floor(defaultSize),
+              height: Math.floor(defaultSize)
+            };
+          }
         } else {
           const defaultSize = Math.min(canvas.width, canvas.height) / 4;
           roiCanvas = {
@@ -616,13 +706,49 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const startY = e.clientY - rect.top;
           if (!roi) {
             // 新建 ROI：以當前點為中心建立預設大小（使用 roiSize 設定）
-            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
-            const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
-            const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
-            const newRoi = { x, y, width: size, height: size };
-            setRoi(newRoi);
-            // 設為可移動狀態，offset 使得中心在手指附近
-            draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+            const video = videoRef.current;
+            if (video) {
+              // 計算 video 在 container 中的實際顯示區域
+              const videoAspectRatio = video.videoWidth / video.videoHeight;
+              const containerAspectRatio = rect.width / rect.height;
+              
+              let displayWidth, displayHeight, displayX, displayY;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                displayWidth = rect.width;
+                displayHeight = rect.width / videoAspectRatio;
+                displayX = 0;
+                displayY = (rect.height - displayHeight) / 2;
+              } else {
+                displayHeight = rect.height;
+                displayWidth = rect.height * videoAspectRatio;
+                displayX = (rect.width - displayWidth) / 2;
+                displayY = 0;
+              }
+              
+              // 確保點擊位置在顯示區域內
+              const clickInDisplayArea = startX >= displayX && startX <= displayX + displayWidth &&
+                                        startY >= displayY && startY <= displayY + displayHeight;
+              
+              if (clickInDisplayArea) {
+                const size = Math.min(displayWidth, displayHeight) * (roiSize / 100);
+                const x = Math.max(displayX, Math.min(startX - size / 2, displayX + displayWidth - size));
+                const y = Math.max(displayY, Math.min(startY - size / 2, displayY + displayHeight - size));
+                const newRoi = { x, y, width: size, height: size };
+                setRoi(newRoi);
+                // 設為可移動狀態，offset 使得中心在手指附近
+                draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+              }
+            } else {
+              // 沒有 video 元素，使用簡單計算
+              const size = Math.min(rect.width, rect.height) * (roiSize / 100);
+              const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
+              const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
+              const newRoi = { x, y, width: size, height: size };
+              setRoi(newRoi);
+              // 設為可移動狀態，offset 使得中心在手指附近
+              draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+            }
           } else {
             // 只支援移動，不支援拖曳調整大小
             draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
@@ -635,10 +761,37 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const y = e.clientY - rect.top;
           setRoi(prev => {
             if (!prev || !draggingRef.current) return prev;
-            // 只支援移動，不支援拖曳調整大小
-            const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
-            const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
-            return { ...prev, x: newX, y: newY };
+            
+            // 計算實際顯示區域
+            const video = videoRef.current;
+            if (video) {
+              const videoAspectRatio = video.videoWidth / video.videoHeight;
+              const containerAspectRatio = rect.width / rect.height;
+              
+              let displayWidth, displayHeight, displayX, displayY;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                displayWidth = rect.width;
+                displayHeight = rect.width / videoAspectRatio;
+                displayX = 0;
+                displayY = (rect.height - displayHeight) / 2;
+              } else {
+                displayHeight = rect.height;
+                displayWidth = rect.height * videoAspectRatio;
+                displayX = (rect.width - displayWidth) / 2;
+                displayY = 0;
+              }
+              
+              // 限制 ROI 移動在實際顯示區域內
+              const newX = Math.max(displayX, Math.min(x - draggingRef.current.offsetX, displayX + displayWidth - prev.width));
+              const newY = Math.max(displayY, Math.min(y - draggingRef.current.offsetY, displayY + displayHeight - prev.height));
+              return { ...prev, x: newX, y: newY };
+            } else {
+              // 沒有 video 元素，使用簡單計算
+              const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
+              const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
+              return { ...prev, x: newX, y: newY };
+            }
           });
         }}
         onMouseUp={() => { draggingRef.current = null; }}
@@ -653,11 +806,45 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           e.preventDefault();
           if (!roi) {
             // 觸控新建 ROI：使用 roiSize 設定的大小置中於觸點
-            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
-            const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
-            const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
-            setRoi({ x, y, width: size, height: size });
-            draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+            const video = videoRef.current;
+            if (video) {
+              // 計算 video 在 container 中的實際顯示區域
+              const videoAspectRatio = video.videoWidth / video.videoHeight;
+              const containerAspectRatio = rect.width / rect.height;
+              
+              let displayWidth, displayHeight, displayX, displayY;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                displayWidth = rect.width;
+                displayHeight = rect.width / videoAspectRatio;
+                displayX = 0;
+                displayY = (rect.height - displayHeight) / 2;
+              } else {
+                displayHeight = rect.height;
+                displayWidth = rect.height * videoAspectRatio;
+                displayX = (rect.width - displayWidth) / 2;
+                displayY = 0;
+              }
+              
+              // 確保觸控位置在顯示區域內
+              const touchInDisplayArea = startX >= displayX && startX <= displayX + displayWidth &&
+                                        startY >= displayY && startY <= displayY + displayHeight;
+              
+              if (touchInDisplayArea) {
+                const size = Math.min(displayWidth, displayHeight) * (roiSize / 100);
+                const x = Math.max(displayX, Math.min(startX - size / 2, displayX + displayWidth - size));
+                const y = Math.max(displayY, Math.min(startY - size / 2, displayY + displayHeight - size));
+                setRoi({ x, y, width: size, height: size });
+                draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+              }
+            } else {
+              // 沒有 video 元素，使用簡單計算
+              const size = Math.min(rect.width, rect.height) * (roiSize / 100);
+              const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
+              const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
+              setRoi({ x, y, width: size, height: size });
+              draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+            }
           } else {
             // 只支援移動，不支援觸控調整大小
             draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
@@ -673,10 +860,37 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           e.preventDefault();
           setRoi(prev => {
             if (!prev || !draggingRef.current) return prev;
-            // 只支援移動，不支援觸控調整大小
-            const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
-            const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
-            return { ...prev, x: newX, y: newY };
+            
+            // 計算實際顯示區域
+            const video = videoRef.current;
+            if (video) {
+              const videoAspectRatio = video.videoWidth / video.videoHeight;
+              const containerAspectRatio = rect.width / rect.height;
+              
+              let displayWidth, displayHeight, displayX, displayY;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                displayWidth = rect.width;
+                displayHeight = rect.width / videoAspectRatio;
+                displayX = 0;
+                displayY = (rect.height - displayHeight) / 2;
+              } else {
+                displayHeight = rect.height;
+                displayWidth = rect.height * videoAspectRatio;
+                displayX = (rect.width - displayWidth) / 2;
+                displayY = 0;
+              }
+              
+              // 限制 ROI 移動在實際顯示區域內
+              const newX = Math.max(displayX, Math.min(x - draggingRef.current.offsetX, displayX + displayWidth - prev.width));
+              const newY = Math.max(displayY, Math.min(y - draggingRef.current.offsetY, displayY + displayHeight - prev.height));
+              return { ...prev, x: newX, y: newY };
+            } else {
+              // 沒有 video 元素，使用簡單計算
+              const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
+              const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
+              return { ...prev, x: newX, y: newY };
+            }
           });
         }}
         onTouchEnd={() => { draggingRef.current = null; }}
@@ -688,11 +902,45 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const localY = e.clientY - rect.top;
           if (!roi) {
             // 若尚未建立 ROI，先建立一個以游標為中心的預設 ROI（本地座標）
-            const size = Math.min(rect.width, rect.height) * (roiSize / 100);
-            const x = Math.max(0, Math.min(localX - size / 2, rect.width - size));
-            const y = Math.max(0, Math.min(localY - size / 2, rect.height - size));
-            setRoi({ x, y, width: size, height: size });
-            return;
+            const video = videoRef.current;
+            if (video) {
+              // 計算 video 在 container 中的實際顯示區域
+              const videoAspectRatio = video.videoWidth / video.videoHeight;
+              const containerAspectRatio = rect.width / rect.height;
+              
+              let displayWidth, displayHeight, displayX, displayY;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                displayWidth = rect.width;
+                displayHeight = rect.width / videoAspectRatio;
+                displayX = 0;
+                displayY = (rect.height - displayHeight) / 2;
+              } else {
+                displayHeight = rect.height;
+                displayWidth = rect.height * videoAspectRatio;
+                displayX = (rect.width - displayWidth) / 2;
+                displayY = 0;
+              }
+              
+              // 確保游標位置在顯示區域內
+              const cursorInDisplayArea = localX >= displayX && localX <= displayX + displayWidth &&
+                                         localY >= displayY && localY <= displayY + displayHeight;
+              
+              if (cursorInDisplayArea) {
+                const size = Math.min(displayWidth, displayHeight) * (roiSize / 100);
+                const x = Math.max(displayX, Math.min(localX - size / 2, displayX + displayWidth - size));
+                const y = Math.max(displayY, Math.min(localY - size / 2, displayY + displayHeight - size));
+                setRoi({ x, y, width: size, height: size });
+                return;
+              }
+            } else {
+              // 沒有 video 元素，使用簡單計算
+              const size = Math.min(rect.width, rect.height) * (roiSize / 100);
+              const x = Math.max(0, Math.min(localX - size / 2, rect.width - size));
+              const y = Math.max(0, Math.min(localY - size / 2, rect.height - size));
+              setRoi({ x, y, width: size, height: size });
+              return;
+            }
           }
           // 移除滾輪縮放功能，大小由滑桿控制
         }}
@@ -769,23 +1017,65 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
               setRoiSize(newSize);
               
               // 如果已有 ROI，即時調整其大小
-              if (roi && containerRef.current) {
+              if (roi && containerRef.current && videoRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
-                const baseSize = Math.min(rect.width, rect.height);
-                const newPixelSize = Math.max(20, baseSize * (newSize / 100)); // 確保最小 20px
+                const video = videoRef.current;
                 
-                // 保持 ROI 中心點不變，調整大小
-                const centerX = roi.x + roi.width / 2;
-                const centerY = roi.y + roi.height / 2;
-                const newX = Math.max(0, Math.min(centerX - newPixelSize / 2, rect.width - newPixelSize));
-                const newY = Math.max(0, Math.min(centerY - newPixelSize / 2, rect.height - newPixelSize));
+                // 計算 video 在 container 中的實際顯示區域
+                const videoAspectRatio = video.videoWidth / video.videoHeight;
+                const containerAspectRatio = rect.width / rect.height;
                 
-                setRoi({
-                  x: newX,
-                  y: newY,
-                  width: newPixelSize,
-                  height: newPixelSize
-                });
+                let displayWidth, displayHeight, displayX, displayY;
+                
+                if (videoAspectRatio > containerAspectRatio) {
+                  displayWidth = rect.width;
+                  displayHeight = rect.width / videoAspectRatio;
+                  displayX = 0;
+                  displayY = (rect.height - displayHeight) / 2;
+                } else {
+                  displayHeight = rect.height;
+                  displayWidth = rect.height * videoAspectRatio;
+                  displayX = (rect.width - displayWidth) / 2;
+                  displayY = 0;
+                }
+                
+                // 檢查 ROI 是否在實際顯示區域內
+                const roiInDisplayArea = roi.x >= displayX && 
+                                        roi.y >= displayY && 
+                                        roi.x + roi.width <= displayX + displayWidth &&
+                                        roi.y + roi.height <= displayY + displayHeight;
+                
+                if (roiInDisplayArea) {
+                  // 使用顯示區域的大小作為基準
+                  const baseSize = Math.min(displayWidth, displayHeight);
+                  const newPixelSize = Math.max(20, baseSize * (newSize / 100)); // 確保最小 20px
+                  
+                  // 保持 ROI 中心點不變，調整大小
+                  const centerX = roi.x + roi.width / 2;
+                  const centerY = roi.y + roi.height / 2;
+                  const newX = Math.max(displayX, Math.min(centerX - newPixelSize / 2, displayX + displayWidth - newPixelSize));
+                  const newY = Math.max(displayY, Math.min(centerY - newPixelSize / 2, displayY + displayHeight - newPixelSize));
+                  
+                  setRoi({
+                    x: newX,
+                    y: newY,
+                    width: newPixelSize,
+                    height: newPixelSize
+                  });
+                } else {
+                  // ROI 不在顯示區域內，重新建立一個在顯示區域中央的 ROI
+                  const baseSize = Math.min(displayWidth, displayHeight);
+                  const newPixelSize = Math.max(20, baseSize * (newSize / 100));
+                  const newX = displayX + (displayWidth - newPixelSize) / 2;
+                  const newY = displayY + (displayHeight - newPixelSize) / 2;
+                  
+                  setRoi({
+                    x: newX,
+                    y: newY,
+                    width: newPixelSize,
+                    height: newPixelSize
+                  });
+                }
               }
               
               log('📐 檢測框大小調整為:', newSize + '%');

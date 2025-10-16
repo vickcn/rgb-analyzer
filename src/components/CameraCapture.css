@@ -148,7 +148,7 @@
   width: 100%;
   height: auto;
   max-height: 400px;
-  object-fit: cover;
+  object-fit: contain; /* 改為 contain 避免拉伸 */
 }
 
 .processing-canvas {
@@ -159,6 +159,7 @@
   height: 100%;
   display: block;
   z-index: 10;
+  object-fit: contain; /* 與 video 保持一致 */
 }
 
 .camera-placeholder {
@@ -220,6 +221,7 @@
   background: #e9ecef;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .motion-sensitivity input[type="range"]::-webkit-slider-thumb {
@@ -230,6 +232,16 @@
   border-radius: 50%;
   background: #667eea;
   cursor: pointer;
+}
+
+.motion-sensitivity input[type="range"]::-moz-range-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #667eea;
+  cursor: pointer;
+  border: none;
 }
 
 .motion-sensitivity span {
