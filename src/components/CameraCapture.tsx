@@ -23,17 +23,30 @@ interface CameraCaptureProps {
     minSaturation: number;
     sampleStep: number;
   };
+  isRecording: boolean;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
+  recordingData: RGBData[];
+  canvasRef?: React.RefObject<HTMLCanvasElement>;
 }
 
 const CameraCapture: React.FC<CameraCaptureProps> = ({
   isActive,
   onCameraToggle,
   onRGBDetected,
-  detectionSettings
+  detectionSettings,
+  isRecording,
+  onStartRecording,
+  onStopRecording,
+  recordingData,
+  canvasRef: externalCanvasRef
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  // 使用外部傳入的 ref 或內部 ref
+  const canvasRef = externalCanvasRef || internalCanvasRef;
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number>();
   const [error, setError] = useState<string>('');
@@ -52,14 +65,14 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const frameChangeThreshold = useRef<number>(0.1); // 10% 的像素變化閾值
 
   // Log 函數，根據設定決定是否輸出
-  const log = (message: string, ...args: any[]) => {
+  const log = useCallback((message: string, ...args: any[]) => {
     if (detectionSettings.enableDetailedLogs) {
       console.log(message, ...args);
     }
-  };
+  }, [detectionSettings.enableDetailedLogs]);
 
   // 檢測畫面變動
-  const detectFrameChange = (currentFrame: ImageData, lastFrame: ImageData | null): boolean => {
+  const detectFrameChange = useCallback((currentFrame: ImageData, lastFrame: ImageData | null): boolean => {
     if (!lastFrame) {
       log('🆕 首次影格，需要檢測');
       return true;
@@ -91,7 +104,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     log(`📊 畫面變化率: ${(changeRatio * 100).toFixed(1)}%`);
     
     return changeRatio > frameChangeThreshold.current;
-  };
+  }, [log]);
 
   // 初始化攝影機
   const initializeCamera = useCallback(async () => {
@@ -148,7 +161,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         // 等待狀態更新後再開始處理
         setTimeout(() => {
           log('📷 攝影機狀態已更新，開始處理');
-          startProcessing();
+          setIsProcessing(true);
         }, 100);
       }
     } catch (err) {
@@ -156,7 +169,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       setError('無法存取攝影機，請確認已授予攝影機權限');
       onCameraToggle(false);
     }
-  }, [onCameraToggle]);
+  }, [onCameraToggle, log]);
 
   // 停止攝影機
   const stopCamera = useCallback(() => {
@@ -242,7 +255,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [isActive, log]);
+  }, [isActive, log, canvasRef]);
 
   // 保存標註圖（含 ROI、RGB 資訊、避開 ROI 的資訊卡、色塊）
   const saveAnnotatedFrame = useCallback(async () => {
@@ -429,7 +442,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [isActive, roi, lastRGB, log]);
+  }, [isActive, roi, lastRGB, log, canvasRef]);
 
   // 同步 ROI 狀態至 ref，供處理迴圈即時讀取
   useEffect(() => {
@@ -438,13 +451,13 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 
   // 開始圖像處理
   const startProcessing = useCallback(() => {
-    console.log('🔍 startProcessing 被調用，isActive:', isActive);
+    // console.log('🔍 startProcessing 被調用，isActive:', isActive);
     if (!videoRef.current || !canvasRef.current) {
       console.log('❌ 無法開始處理：video 或 canvas 不存在');
       return;
     }
     
-    console.log('🚀 開始圖像處理循環，isActive:', isActive);
+    // console.log('🚀 開始圖像處理循環，isActive:', isActive);
     setIsProcessing(true);
     
     let frameCount = 0;
@@ -512,7 +525,6 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         const currentRoi = roiRef.current;
         if (currentRoi && containerRef.current) {
           const canvasRect = canvas.getBoundingClientRect();
-          const videoRect = video.getBoundingClientRect();
           
           // 計算 video 在 container 中的實際顯示區域（考慮 object-fit: contain）
           const videoAspectRatio = video.videoWidth / video.videoHeight;
@@ -603,7 +615,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 
     log('🎬 開始第一幀處理');
     processFrame();
-  }, [isActive, onCameraToggle, detectionSettings.enableDetailedLogs, onRGBDetected, isFrozen]);
+  }, [isActive, onRGBDetected, isFrozen, canvasRef, detectFrameChange, detectionSettings, log]);
 
   // 處理攝影機狀態變化
   useEffect(() => {
@@ -616,6 +628,14 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       stopCamera();
     }
   }, [isActive, initializeCamera, stopCamera]);
+
+  // 當 isProcessing 變為 true 時啟動圖像處理
+  useEffect(() => {
+    if (isProcessing && isActive && videoRef.current && canvasRef.current) {
+      // console.log('🚀 啟動圖像處理循環');
+      startProcessing();
+    }
+  }, [isProcessing, isActive, startProcessing, canvasRef]);
 
   // 定格時暫停 video 播放（保持最後畫面）；解除定格時恢復播放
   useEffect(() => {
@@ -679,6 +699,13 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
               disabled={isSaving}
             >
               {isSaving ? '💾 保存中...' : '💾 保存標註圖'}
+            </button>
+            <button
+              className={`recording-toggle ${isRecording ? 'recording' : ''}`}
+              onClick={isRecording ? onStopRecording : onStartRecording}
+              disabled={isSaving}
+            >
+              {isRecording ? `🔴 停止紀錄 (${recordingData.length}/10)` : '⏺️ 開始時段紀錄'}
             </button>
           </>
         )}
