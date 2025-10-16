@@ -262,9 +262,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       saveCanvas.height = sourceCanvas.height;
       ctx.drawImage(sourceCanvas, 0, 0);
 
-      // 繪製 ROI 框（若存在）
+      // 繪製 ROI 框（手動 ROI 或預設 ROI）
       let roiCanvas: { x: number; y: number; width: number; height: number } | null = null;
       if (roi && containerRef.current) {
+        // 手動 ROI：從容器座標轉換到 Canvas 座標
         const canvasRect = sourceCanvas.getBoundingClientRect();
         const scaleX = sourceCanvas.width / canvasRect.width;
         const scaleY = sourceCanvas.height / canvasRect.height;
@@ -274,10 +275,21 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           width: Math.max(1, Math.round(roi.width * scaleX)),
           height: Math.max(1, Math.round(roi.height * scaleY))
         };
-        ctx.strokeStyle = '#00ff88';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(roiCanvas.x, roiCanvas.y, roiCanvas.width, roiCanvas.height);
+      } else {
+        // 預設 ROI：畫面中央區域（與 processFrame 邏輯一致）
+        const defaultSize = Math.min(sourceCanvas.width, sourceCanvas.height) / 4;
+        roiCanvas = {
+          x: Math.floor(sourceCanvas.width / 2 - defaultSize / 2),
+          y: Math.floor(sourceCanvas.height / 2 - defaultSize / 2),
+          width: Math.floor(defaultSize),
+          height: Math.floor(defaultSize)
+        };
       }
+      
+      // 繪製 ROI 框
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(roiCanvas.x, roiCanvas.y, roiCanvas.width, roiCanvas.height);
 
       // 計算資訊卡位置（盡量避開 ROI）
       const padding = 12;
@@ -601,10 +613,14 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const startX = e.clientX - rect.left; // 轉為容器本地座標
           const startY = e.clientY - rect.top;
           if (!roi) {
-            // 新建 ROI，從當前點開始
-            const newRoi = { x: startX, y: startY, width: 1, height: 1 };
+            // 新建 ROI：以當前點為中心建立預設大小（較易於觸控/拖曳）
+            const size = Math.min(rect.width, rect.height) / 4;
+            const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
+            const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
+            const newRoi = { x, y, width: size, height: size };
             setRoi(newRoi);
-            draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
+            // 設為可移動狀態，offset 使得中心在手指附近
+            draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
           } else {
             // 判斷是否在 ROI 右下角 16x16 區域內 -> resize
             const handleSize = 16;
@@ -638,6 +654,57 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         }}
         onMouseUp={() => { draggingRef.current = null; }}
         onMouseLeave={() => { draggingRef.current = null; }}
+        onTouchStart={(e) => {
+          if (!containerRef.current) return;
+          if (e.touches.length === 0) return;
+          const touch = e.touches[0];
+          const rect = containerRef.current.getBoundingClientRect();
+          const startX = touch.clientX - rect.left;
+          const startY = touch.clientY - rect.top;
+          e.preventDefault();
+          if (!roi) {
+            // 觸控新建 ROI：預設大小置中於觸點
+            const size = Math.min(rect.width, rect.height) / 4;
+            const x = Math.max(0, Math.min(startX - size / 2, rect.width - size));
+            const y = Math.max(0, Math.min(startY - size / 2, rect.height - size));
+            setRoi({ x, y, width: size, height: size });
+            draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
+          } else {
+            // 同滑鼠：右下角 16x16 視為 resize，否則 move
+            const handleSize = 24; // 略放大手把區域以利觸控
+            const inResize = startX >= roi.x + roi.width - handleSize && startX <= roi.x + roi.width &&
+                             startY >= roi.y + roi.height - handleSize && startY <= roi.y + roi.height;
+            if (inResize) {
+              draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
+            } else {
+              draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
+            }
+          }
+        }}
+        onTouchMove={(e) => {
+          if (!draggingRef.current || !containerRef.current) return;
+          if (e.touches.length === 0) return;
+          const touch = e.touches[0];
+          const rect = containerRef.current.getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+          e.preventDefault();
+          setRoi(prev => {
+            if (!prev) return prev;
+            if (draggingRef.current?.type === 'move') {
+              const newX = Math.max(0, Math.min(x - draggingRef.current!.offsetX, rect.width - prev.width));
+              const newY = Math.max(0, Math.min(y - draggingRef.current!.offsetY, rect.height - prev.height));
+              return { ...prev, x: newX, y: newY };
+            } else {
+              const minSize = 24; // 觸控下保持較大最小尺寸
+              const width = Math.max(minSize, Math.min(x - prev.x, rect.width - prev.x));
+              const height = Math.max(minSize, Math.min(y - prev.y, rect.height - prev.y));
+              return { ...prev, width, height };
+            }
+          });
+        }}
+        onTouchEnd={() => { draggingRef.current = null; }}
+        onTouchCancel={() => { draggingRef.current = null; }}
         onWheel={(e) => {
           if (!containerRef.current) return;
           const rect = containerRef.current.getBoundingClientRect();
