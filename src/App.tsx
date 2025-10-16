@@ -26,7 +26,14 @@ function App() {
     blurKernel: 5,
     enableEdgeDetection: true,
     enableColorDetection: true,
-    enableDetailedLogs: false // 生產環境預設關閉詳細 log
+    enableDetailedLogs: false, // 生產環境預設關閉詳細 log
+    // 新增：ROI 與像素過濾預設
+    edgeMarginPercent: 5,
+    minEdgeMarginPx: 2,
+    whiteThreshold: 240,
+    blackThreshold: 10,
+    minSaturation: 10,
+    sampleStep: 2
   });
 
   const handleRGBDetected = (rgbData: RGBData) => {

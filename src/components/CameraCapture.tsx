@@ -15,6 +15,13 @@ interface CameraCaptureProps {
     enableEdgeDetection: boolean;
     enableColorDetection: boolean;
     enableDetailedLogs: boolean;
+    // 新增設定（同步 utils）
+    edgeMarginPercent: number;
+    minEdgeMarginPx: number;
+    whiteThreshold: number;
+    blackThreshold: number;
+    minSaturation: number;
+    sampleStep: number;
   };
 }
 
@@ -26,10 +33,18 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number>();
   const [error, setError] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isFrozen, setIsFrozen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastRGB, setLastRGB] = useState<RGBData | null>(null);
+  // ROI 使用「容器內本地座標」(左上角為 0,0)
+  const [roi, setRoi] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const roiRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const draggingRef = useRef<{ type: 'move' | 'resize'; offsetX: number; offsetY: number } | null>(null);
   const lastProcessTime = useRef<number>(0);
   const lastFrameData = useRef<ImageData | null>(null);
   const frameChangeThreshold = useRef<number>(0.1); // 10% 的像素變化閾值
@@ -97,9 +112,31 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         streamRef.current = stream;
         
         // 等待影片載入
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
           if (videoRef.current) {
-            videoRef.current.onloadedmetadata = resolve;
+            const video = videoRef.current;
+            
+            const handleLoadedMetadata = () => {
+              video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+              video.removeEventListener('error', handleError);
+              resolve(void 0);
+            };
+            
+            const handleError = (err: Event) => {
+              video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+              video.removeEventListener('error', handleError);
+              reject(err);
+            };
+            
+            video.addEventListener('loadedmetadata', handleLoadedMetadata);
+            video.addEventListener('error', handleError);
+            
+            // 如果已經載入完成，直接 resolve
+            if (video.readyState >= 1) {
+              handleLoadedMetadata();
+            }
+          } else {
+            reject(new Error('Video element not found'));
           }
         });
         
@@ -131,12 +168,209 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     }
     
     if (videoRef.current) {
-      videoRef.current.srcObject = null;
+      try {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+        videoRef.current.load(); // 重置 video 元素
+      } catch (err) {
+        console.warn('停止攝影機時發生錯誤:', err);
+      }
     }
     
     onCameraToggle(false);
     setIsProcessing(false);
+    setIsFrozen(false); // 重置定格狀態
   }, [onCameraToggle]);
+
+  // 保存原圖（不含任何標註）
+  const saveRawFrame = useCallback(async () => {
+    if (!canvasRef.current || !isActive) {
+      setError('無法保存圖片：攝影機未啟動或畫布不存在');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError('');
+
+      // 創建一個新的 canvas 來保存圖片
+      const saveCanvas = document.createElement('canvas');
+      const saveCtx = saveCanvas.getContext('2d', { willReadFrequently: true });
+      
+      if (!saveCtx) {
+        throw new Error('無法創建畫布上下文');
+      }
+
+      // 設定保存畫布的尺寸
+      saveCanvas.width = canvasRef.current.width;
+      saveCanvas.height = canvasRef.current.height;
+
+      // 繪製當前畫面到保存畫布
+      saveCtx.drawImage(canvasRef.current, 0, 0);
+
+      // 轉換為 blob 並下載
+      saveCanvas.toBlob((blob) => {
+        if (!blob) {
+          throw new Error('無法生成圖片數據');
+        }
+
+        // 創建下載連結
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // 生成檔案名稱（包含時間戳）
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        link.download = `rgb-raw-${timestamp}.png`;
+        
+        // 觸發下載
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 清理 URL
+        URL.revokeObjectURL(url);
+        
+        log('✅ 原圖已成功保存');
+      }, 'image/png', 0.95);
+
+    } catch (err) {
+      console.error('保存圖片失敗:', err);
+      setError('保存圖片失敗，請重試');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isActive, log]);
+
+  // 保存標註圖（含 ROI、RGB 資訊、避開 ROI 的資訊卡、色塊）
+  const saveAnnotatedFrame = useCallback(async () => {
+    if (!canvasRef.current || !isActive) {
+      setError('無法保存圖片：攝影機未啟動或畫布不存在');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError('');
+
+      const sourceCanvas = canvasRef.current;
+      const saveCanvas = document.createElement('canvas');
+      const ctx = saveCanvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('無法創建畫布上下文');
+
+      saveCanvas.width = sourceCanvas.width;
+      saveCanvas.height = sourceCanvas.height;
+      ctx.drawImage(sourceCanvas, 0, 0);
+
+      // 繪製 ROI 框（若存在）
+      let roiCanvas: { x: number; y: number; width: number; height: number } | null = null;
+      if (roi && containerRef.current) {
+        const canvasRect = sourceCanvas.getBoundingClientRect();
+        const scaleX = sourceCanvas.width / canvasRect.width;
+        const scaleY = sourceCanvas.height / canvasRect.height;
+        roiCanvas = {
+          x: Math.max(0, Math.round(roi.x * scaleX)),
+          y: Math.max(0, Math.round(roi.y * scaleY)),
+          width: Math.max(1, Math.round(roi.width * scaleX)),
+          height: Math.max(1, Math.round(roi.height * scaleY))
+        };
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(roiCanvas.x, roiCanvas.y, roiCanvas.width, roiCanvas.height);
+      }
+
+      // 計算資訊卡位置（盡量避開 ROI）
+      const padding = 12;
+      const swatchSize = Math.max(12, Math.floor(Math.min(saveCanvas.width, saveCanvas.height) / 20));
+      const fontSize = Math.max(14, Math.floor(swatchSize * 0.9));
+      ctx.font = `${fontSize}px Arial`;
+      const textLines: string[] = [];
+      if (lastRGB) {
+        textLines.push(`HEX: ${lastRGB.hex}`);
+        textLines.push(`RGB: ${lastRGB.r}, ${lastRGB.g}, ${lastRGB.b}`);
+      } else {
+        textLines.push('尚無 RGB 數據');
+      }
+      const textWidth = Math.max(...textLines.map(line => ctx.measureText(line).width));
+      const cardWidth = padding + swatchSize + padding + textWidth + padding;
+      const cardHeight = padding + fontSize * textLines.length + padding;
+
+      // 嘗試四個角落，找一個不與 ROI 相交的位置
+      const candidatePositions = [
+        { x: padding, y: padding }, // 左上
+        { x: saveCanvas.width - cardWidth - padding, y: padding }, // 右上
+        { x: padding, y: saveCanvas.height - cardHeight - padding }, // 左下
+        { x: saveCanvas.width - cardWidth - padding, y: saveCanvas.height - cardHeight - padding }, // 右下
+      ];
+      let cardX = candidatePositions[0].x;
+      let cardY = candidatePositions[0].y;
+      const intersects = (a: {x:number;y:number;width:number;height:number}, b: {x:number;y:number;width:number;height:number}) =>
+        !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
+      if (roiCanvas) {
+        for (const pos of candidatePositions) {
+          const cardRect = { x: pos.x, y: pos.y, width: cardWidth, height: cardHeight };
+          if (!intersects(cardRect, roiCanvas)) {
+            cardX = pos.x;
+            cardY = pos.y;
+            break;
+          }
+        }
+      }
+
+      // 背板：白色 70% 透明
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillRect(cardX, cardY, cardWidth, cardHeight);
+      // 邊框（可有可無，保留細黑線）
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cardX, cardY, cardWidth, cardHeight);
+
+      // 顏色色塊（黑邊）
+      const swatchX = cardX + padding;
+      const swatchY = cardY + Math.floor((cardHeight - swatchSize) / 2);
+      const swatchColor = lastRGB ? lastRGB.hex : '#000000';
+      ctx.fillStyle = swatchColor;
+      ctx.fillRect(swatchX, swatchY, swatchSize, swatchSize);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(swatchX, swatchY, swatchSize, swatchSize);
+
+      // 文字（黑色）
+      ctx.fillStyle = '#000000';
+      let textX = swatchX + swatchSize + padding;
+      let textY = cardY + padding + fontSize * 0.9; // 第一行基線
+      for (const line of textLines) {
+        ctx.fillText(line, textX, textY);
+        textY += fontSize;
+      }
+
+      // 轉換為 blob 並下載
+      saveCanvas.toBlob((blob) => {
+        if (!blob) throw new Error('無法生成圖片數據');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        link.download = `rgb-annotated-${timestamp}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        log('✅ 標註圖已成功保存');
+      }, 'image/png', 0.95);
+
+    } catch (err) {
+      console.error('保存圖片失敗:', err);
+      setError('保存圖片失敗，請重試');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isActive, roi, lastRGB, log]);
+
+  // 同步 ROI 狀態至 ref，供處理迴圈即時讀取
+  useEffect(() => {
+    roiRef.current = roi;
+  }, [roi]);
 
   // 開始圖像處理
   const startProcessing = useCallback(() => {
@@ -161,6 +395,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         return;
       }
 
+      // 定格：若已定格，不更新畫面與偵測（保留上一次畫面）
+      if (isFrozen) {
+        animationFrameRef.current = requestAnimationFrame(processFrame);
+        return;
+      }
+
       // 限制處理頻率，每 500ms 處理一次（降低頻率）
       const now = Date.now();
       if (now - lastProcessTime.current < 500) {
@@ -176,7 +416,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       try {
         const canvas = canvasRef.current;
         const video = videoRef.current;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
         if (!ctx) return;
 
@@ -203,38 +443,46 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         
         log('🔄 畫面有顯著變化，開始檢測');
         
-        // 繪製檢測框（中心點）
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const radius = Math.min(canvas.width, canvas.height) / 4;
-        
-        ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-        ctx.stroke();
-        
-        // 繪製十字線
-        ctx.strokeStyle = '#ff0000';
+        // 計算 ROI（若無，預設為畫面中央區域）
+        let roiCanvas: { x: number; y: number; width: number; height: number };
+        const currentRoi = roiRef.current;
+        if (currentRoi && containerRef.current) {
+          const canvasRect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / canvasRect.width;
+          const scaleY = canvas.height / canvasRect.height;
+          roiCanvas = {
+            x: Math.max(0, Math.round(currentRoi.x * scaleX)),
+            y: Math.max(0, Math.round(currentRoi.y * scaleY)),
+            width: Math.max(1, Math.round(currentRoi.width * scaleX)),
+            height: Math.max(1, Math.round(currentRoi.height * scaleY))
+          };
+        } else {
+          const defaultSize = Math.min(canvas.width, canvas.height) / 4;
+          roiCanvas = {
+            x: Math.floor(canvas.width / 2 - defaultSize / 2),
+            y: Math.floor(canvas.height / 2 - defaultSize / 2),
+            width: Math.floor(defaultSize),
+            height: Math.floor(defaultSize)
+          };
+        }
+
+        // 在 Canvas 上繪製 ROI 框
+        ctx.strokeStyle = '#00ff88';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(centerX - 20, centerY);
-        ctx.lineTo(centerX + 20, centerY);
-        ctx.moveTo(centerX, centerY - 20);
-        ctx.lineTo(centerX, centerY + 20);
-        ctx.stroke();
-        
-        log('🎯 檢測框已繪製');
+        ctx.strokeRect(roiCanvas.x, roiCanvas.y, roiCanvas.width, roiCanvas.height);
+        log('🎯 檢測 ROI 已繪製');
 
         // 使用 OpenCV 處理圖像
         log('🔧 調用 OpenCV 處理函數...');
         const rgbData = await processImageForRGB(
           canvas,
-          detectionSettings
+          detectionSettings,
+          roiCanvas
         );
 
         if (rgbData) {
           log('✅ 檢測到 RGB 數據:', rgbData.hex);
+          setLastRGB(rgbData);
           onRGBDetected(rgbData);
         } else {
           log('❌ 未檢測到 RGB 數據');
@@ -251,7 +499,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 
     log('🎬 開始第一幀處理');
     processFrame();
-  }, [isActive, onCameraToggle, detectionSettings.enableDetailedLogs, onRGBDetected]);
+  }, [isActive, onCameraToggle, detectionSettings.enableDetailedLogs, onRGBDetected, isFrozen]);
 
   // 處理攝影機狀態變化
   useEffect(() => {
@@ -264,6 +512,29 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       stopCamera();
     }
   }, [isActive, initializeCamera, stopCamera]);
+
+  // 定格時暫停 video 播放（保持最後畫面）；解除定格時恢復播放
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isFrozen) {
+      try { 
+        videoRef.current.pause(); 
+      } catch (err) {
+        console.warn('暫停影片失敗:', err);
+      }
+    } else {
+      try { 
+        // 檢查影片是否已經載入並準備播放
+        if (videoRef.current.readyState >= 2) {
+          videoRef.current.play().catch(err => {
+            console.warn('播放影片失敗:', err);
+          });
+        }
+      } catch (err) {
+        console.warn('播放影片失敗:', err);
+      }
+    }
+  }, [isFrozen]);
 
   // 清理資源
   useEffect(() => {
@@ -281,6 +552,32 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         >
           {isActive ? '📷 停止攝影機' : '📷 啟動攝影機'}
         </button>
+        {isActive && (
+          <button
+            className={`freeze-toggle ${isFrozen ? 'active' : ''}`}
+            onClick={() => setIsFrozen(prev => !prev)}
+          >
+            {isFrozen ? '⏯ 解除定格' : '⏸ 定格畫面'}
+          </button>
+        )}
+        {isActive && (
+          <>
+            <button
+              className={`save-image ${isSaving ? 'saving' : ''}`}
+              onClick={saveRawFrame}
+              disabled={isSaving}
+            >
+              {isSaving ? '💾 保存中...' : '💾 保存原圖'}
+            </button>
+            <button
+              className={`save-image ${isSaving ? 'saving' : ''}`}
+              onClick={saveAnnotatedFrame}
+              disabled={isSaving}
+            >
+              {isSaving ? '💾 保存中...' : '💾 保存標註圖'}
+            </button>
+          </>
+        )}
         
         {isProcessing && (
           <div className="processing-indicator">
@@ -297,7 +594,88 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         </div>
       )}
 
-      <div className="camera-preview">
+      <div className="camera-preview" ref={containerRef}
+        onMouseDown={(e) => {
+          if (!containerRef.current) return;
+          const rect = containerRef.current.getBoundingClientRect();
+          const startX = e.clientX - rect.left; // 轉為容器本地座標
+          const startY = e.clientY - rect.top;
+          if (!roi) {
+            // 新建 ROI，從當前點開始
+            const newRoi = { x: startX, y: startY, width: 1, height: 1 };
+            setRoi(newRoi);
+            draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
+          } else {
+            // 判斷是否在 ROI 右下角 16x16 區域內 -> resize
+            const handleSize = 16;
+            const inResize = startX >= roi.x + roi.width - handleSize && startX <= roi.x + roi.width &&
+                             startY >= roi.y + roi.height - handleSize && startY <= roi.y + roi.height;
+            if (inResize) {
+              draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
+            } else {
+              // move
+              draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
+            }
+          }
+        }}
+        onMouseMove={(e) => {
+          if (!draggingRef.current || !containerRef.current) return;
+          const rect = containerRef.current.getBoundingClientRect();
+          const x = e.clientX - rect.left; // 容器本地座標
+          const y = e.clientY - rect.top;
+          setRoi(prev => {
+            if (!prev) return prev;
+            if (draggingRef.current?.type === 'move') {
+              const newX = Math.max(0, Math.min(x - draggingRef.current!.offsetX, rect.width - prev.width));
+              const newY = Math.max(0, Math.min(y - draggingRef.current!.offsetY, rect.height - prev.height));
+              return { ...prev, x: newX, y: newY };
+            } else {
+              const width = Math.max(16, Math.min(x - prev.x, rect.width - prev.x));
+              const height = Math.max(16, Math.min(y - prev.y, rect.height - prev.y));
+              return { ...prev, width, height };
+            }
+          });
+        }}
+        onMouseUp={() => { draggingRef.current = null; }}
+        onMouseLeave={() => { draggingRef.current = null; }}
+        onWheel={(e) => {
+          if (!containerRef.current) return;
+          const rect = containerRef.current.getBoundingClientRect();
+          const localX = e.clientX - rect.left;
+          const localY = e.clientY - rect.top;
+          if (!roi) {
+            // 若尚未建立 ROI，先建立一個以游標為中心的預設 ROI（本地座標）
+            const size = Math.min(rect.width, rect.height) / 4;
+            const x = Math.max(0, Math.min(localX - size / 2, rect.width - size));
+            const y = Math.max(0, Math.min(localY - size / 2, rect.height - size));
+            setRoi({ x, y, width: size, height: size });
+            return;
+          }
+
+          e.preventDefault();
+          const scale = e.deltaY < 0 ? 0.9 : 1.1; // 向上縮小，向下放大
+
+          // 以滑鼠座標為錨點縮放 ROI
+          const mouseX = localX;
+          const mouseY = localY;
+          setRoi(prev => {
+            if (!prev) return prev;
+            const minSize = 24;
+            const maxSize = Math.min(rect.width, rect.height);
+
+            const relX = mouseX - prev.x;
+            const relY = mouseY - prev.y;
+            const newWidth = Math.max(minSize, Math.min(maxSize, prev.width * scale));
+            const newHeight = Math.max(minSize, Math.min(maxSize, prev.height * scale));
+
+            // 調整左上角使游標保持在相對同一比例位置
+            const newX = Math.max(0, Math.min(mouseX - (relX * (newWidth / prev.width)), rect.width - newWidth));
+            const newY = Math.max(0, Math.min(mouseY - (relY * (newHeight / prev.height)), rect.height - newHeight));
+
+            return { x: newX, y: newY, width: newWidth, height: newHeight };
+          });
+        }}
+      >
         <video
           ref={videoRef}
           autoPlay
@@ -318,6 +696,38 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             <div className="placeholder-icon">📷</div>
             <p>點擊上方按鈕啟動攝影機</p>
             <small>需要攝影機權限以進行RGB檢測</small>
+          </div>
+        )}
+
+        {/* ROI 覆蓋層（以視窗座標繪製）*/}
+        {roi && (
+          <div
+            style={{
+              position: 'absolute',
+              left: roi.x,
+              top: roi.y,
+              width: roi.width,
+              height: roi.height,
+              border: '2px solid #00ff88',
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.2) inset',
+              zIndex: 20,
+              pointerEvents: 'none'
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                width: 12,
+                height: 12,
+                right: -6,
+                bottom: -6,
+                background: '#00ff88',
+                borderRadius: 2,
+                boxShadow: '0 0 0 2px #00ff88',
+                pointerEvents: 'auto',
+                cursor: 'nwse-resize'
+              }}
+            />
           </div>
         )}
       </div>

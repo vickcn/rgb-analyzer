@@ -42,6 +42,7 @@ pids
 # OS generated files
 Thumbs.db
 
+docs/
 tmp/
 tmp*/
 imgData/
@@ -49,5 +50,8 @@ issues/
 *output/
 .bak
 .txt
+image/*
+
+
 
 .vercel

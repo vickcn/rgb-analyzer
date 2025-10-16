@@ -10,6 +10,13 @@ interface DetectionControlsProps {
     enableEdgeDetection: boolean;
     enableColorDetection: boolean;
     enableDetailedLogs: boolean;
+    // 新增設定（與 utils 對齊）
+    edgeMarginPercent: number;
+    minEdgeMarginPx: number;
+    whiteThreshold: number;
+    blackThreshold: number;
+    minSaturation: number;
+    sampleStep: number;
   };
   onSettingsChange: (settings: any) => void;
 }
@@ -39,7 +46,13 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
       blurKernel: 5,
       enableEdgeDetection: true,
       enableColorDetection: true,
-      enableDetailedLogs: false
+      enableDetailedLogs: false,
+      edgeMarginPercent: 5,
+      minEdgeMarginPx: 2,
+      whiteThreshold: 240,
+      blackThreshold: 10,
+      minSaturation: 10,
+      sampleStep: 2
     });
   };
 
@@ -216,6 +229,117 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
                     />
                     <div className="slider-description">
                       減少圖像噪聲，奇數值
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ROI 與像素過濾參數 */}
+          <div className="control-group collapsible">
+            <div 
+              className="control-group-header"
+              onClick={() => setIsGeneralExpanded(!isGeneralExpanded)}
+            >
+              <h4>📦 ROI 與像素過濾</h4>
+              <span className={`collapse-icon ${isGeneralExpanded ? 'expanded' : ''}`}>
+                ▼
+              </span>
+            </div>
+            {isGeneralExpanded && (
+              <div className="control-group-content">
+                <div className="slider-controls">
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      ROI 內縮比例: {settings.edgeMarginPercent}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="20"
+                      step="1"
+                      value={settings.edgeMarginPercent}
+                      onChange={(e) => updateSetting('edgeMarginPercent', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                  </div>
+
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      內縮最小像素: {settings.minEdgeMarginPx}px
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      step="1"
+                      value={settings.minEdgeMarginPx}
+                      onChange={(e) => updateSetting('minEdgeMarginPx', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                  </div>
+
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      近白門檻: {settings.whiteThreshold}
+                    </label>
+                    <input
+                      type="range"
+                      min="200"
+                      max="255"
+                      step="1"
+                      value={settings.whiteThreshold}
+                      onChange={(e) => updateSetting('whiteThreshold', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                  </div>
+
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      近黑門檻: {settings.blackThreshold}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="30"
+                      step="1"
+                      value={settings.blackThreshold}
+                      onChange={(e) => updateSetting('blackThreshold', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                  </div>
+
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      最小飽和度: {settings.minSaturation}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="60"
+                      step="1"
+                      value={settings.minSaturation}
+                      onChange={(e) => updateSetting('minSaturation', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                  </div>
+
+                  <div className="slider-item">
+                    <label className="slider-label">
+                      取樣步距: {settings.sampleStep}px
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="6"
+                      step="1"
+                      value={settings.sampleStep}
+                      onChange={(e) => updateSetting('sampleStep', parseInt(e.target.value))}
+                      className="slider"
+                    />
+                    <div className="slider-description">
+                      步距越大效能越好，但精度降低
                     </div>
                   </div>
                 </div>

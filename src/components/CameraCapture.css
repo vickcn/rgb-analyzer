@@ -11,6 +11,55 @@
   flex-wrap: wrap;
 }
 
+.freeze-toggle {
+  background: #444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.freeze-toggle.active {
+  background: #0aa36b;
+}
+
+.save-image {
+  background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
+}
+
+.save-image:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(78, 205, 196, 0.6);
+}
+
+.save-image:active {
+  transform: translateY(0);
+}
+
+.save-image:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.save-image.saving {
+  background: linear-gradient(135deg, #ffa726 0%, #ff7043 100%);
+  box-shadow: 0 4px 15px rgba(255, 167, 38, 0.4);
+}
+
 .camera-toggle {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;

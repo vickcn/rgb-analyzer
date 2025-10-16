@@ -43,6 +43,13 @@ interface ProcessingSettings {
   enableEdgeDetection: boolean;
   enableColorDetection: boolean;
   enableDetailedLogs: boolean;
+  // 新增：ROI 內縮與像素過濾參數
+  edgeMarginPercent: number;    // 內縮比例（%）
+  minEdgeMarginPx: number;      // 內縮最小像素
+  whiteThreshold: number;       // 近白門檻
+  blackThreshold: number;       // 近黑門檻
+  minSaturation: number;        // 最小飽和度
+  sampleStep: number;           // 取樣步距
 }
 
 // RGB 轉 HEX
@@ -94,7 +101,8 @@ const calculateAverageRGB = (src: any, mask: any, enableLogs: boolean = false): 
 // 主要圖像處理函數
 export const processImageForRGB = async (
   canvas: HTMLCanvasElement,
-  settings: ProcessingSettings
+  settings: ProcessingSettings,
+  roi?: { x: number; y: number; width: number; height: number }
 ): Promise<RGBData | null> => {
   try {
     // Log 函數，根據設定決定是否輸出
@@ -113,7 +121,7 @@ export const processImageForRGB = async (
     }
 
     const cv = window.cv;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       log('❌ 無法獲取 Canvas 上下文');
       return null;
@@ -146,40 +154,117 @@ export const processImageForRGB = async (
       // 高斯模糊
       cv.GaussianBlur(gray, blurred, new cv.Size(settings.blurKernel, settings.blurKernel), 0, 0, cv.BORDER_DEFAULT);
 
-      // 直接從 Canvas 獲取中心點 RGB 值（不經過 OpenCV）
+      // 直接從 Canvas 圖像數據獲取 RGB（支援 ROI，否則採樣中心區域）
       log('🎯 使用 Canvas 直接檢測模式');
-      const centerX = Math.floor(canvas.width / 2);
-      const centerY = Math.floor(canvas.height / 2);
-      const radius = Math.min(canvas.width, canvas.height) / 8;
-      
-      // 直接從 Canvas 圖像數據獲取 RGB
       const canvasData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = canvasData.data;
-      
+
+      // 計算 ROI 邊界（若未提供，使用以中心為主的預設區域）
+      const defaultSize = Math.floor(Math.min(canvas.width, canvas.height) / 4);
+      const samplingRect = roi ? {
+        x: Math.max(0, Math.floor(roi.x)),
+        y: Math.max(0, Math.floor(roi.y)),
+        width: Math.max(1, Math.floor(roi.width)),
+        height: Math.max(1, Math.floor(roi.height))
+      } : {
+        x: Math.floor(canvas.width / 2 - defaultSize / 2),
+        y: Math.floor(canvas.height / 2 - defaultSize / 2),
+        width: defaultSize,
+        height: defaultSize
+      };
+
+      const maxX = Math.min(canvas.width, samplingRect.x + samplingRect.width);
+      const maxY = Math.min(canvas.height, samplingRect.y + samplingRect.height);
+
+      // 內縮邊界：避免取到 ROI 邊緣的黑邊或背景
+      const roiMinSide = Math.min(samplingRect.width, samplingRect.height);
+      const marginPercent = Math.max(0, Math.min(100, (settings as any).edgeMarginPercent ?? 5));
+      const minMarginPx = Math.max(0, (settings as any).minEdgeMarginPx ?? 2);
+      const proposedMargin = Math.floor(roiMinSide * (marginPercent / 100));
+      const edgeMargin = Math.max(minMarginPx, proposedMargin);
+
+      // 計算內縮後的取樣區域，過小則回退為不內縮
+      const innerX = samplingRect.x + edgeMargin;
+      const innerY = samplingRect.y + edgeMargin;
+      const innerMaxX = Math.min(maxX, maxX - edgeMargin);
+      const innerMaxY = Math.min(maxY, maxY - edgeMargin);
+      const innerWidth = innerMaxX - innerX;
+      const innerHeight = innerMaxY - innerY;
+
       let totalR = 0, totalG = 0, totalB = 0;
       let pixelCount = 0;
-      
-      // 取樣中心區域的像素
-      for (let y = centerY - radius; y < centerY + radius; y += 2) {
-        for (let x = centerX - radius; x < centerX + radius; x += 2) {
-          if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+      // 過濾後的統計（近白/近黑/低飽和排除）
+      let filteredR = 0, filteredG = 0, filteredB = 0;
+      let filteredCount = 0;
+
+      const sampleStep = Math.max(1, Math.floor((settings as any).sampleStep ?? 2)); // 每 N px 取樣
+      // 過濾條件
+      const whiteThreshold = Math.max(0, Math.min(255, (settings as any).whiteThreshold ?? 240));
+      const blackThreshold = Math.max(0, Math.min(255, (settings as any).blackThreshold ?? 10));
+      const minSaturation = Math.max(0, Math.min(255, (settings as any).minSaturation ?? 10));
+
+      const sampleRegion = (startX: number, startY: number, endX: number, endY: number) => {
+        for (let y = startY; y < endY; y += sampleStep) {
+          for (let x = startX; x < endX; x += sampleStep) {
             const index = (y * canvas.width + x) * 4;
-            totalR += data[index];
-            totalG += data[index + 1];
-            totalB += data[index + 2];
+            const r = data[index];
+            const g = data[index + 1];
+            const b = data[index + 2];
+
+            totalR += r;
+            totalG += g;
+            totalB += b;
             pixelCount++;
+
+            // 計算簡單飽和度（max - min）
+            const maxRGB = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            const minRGB = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            const saturation = maxRGB - minRGB;
+
+            const isNearWhite = r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold;
+            const isNearBlack = r <= blackThreshold && g <= blackThreshold && b <= blackThreshold;
+            const isLowSaturation = saturation < minSaturation;
+
+            if (!(isNearWhite || isNearBlack || isLowSaturation)) {
+              filteredR += r;
+              filteredG += g;
+              filteredB += b;
+              filteredCount++;
+            }
           }
         }
+      };
+
+      // 優先用內縮後區域，若太小或沒有取到像素，則回退到原 ROI 區域
+      const minEffectiveSize = 8; // 內縮後至少需要 8px 邊長
+      if (innerWidth >= minEffectiveSize && innerHeight >= minEffectiveSize) {
+        sampleRegion(innerX, innerY, innerMaxX, innerMaxY);
       }
-      
-      if (pixelCount > 0) {
-        const avgR = Math.round(totalR / pixelCount);
-        const avgG = Math.round(totalG / pixelCount);
-        const avgB = Math.round(totalB / pixelCount);
+      if (pixelCount === 0) {
+        // 回退：不內縮，使用原 ROI
+        sampleRegion(samplingRect.x, samplingRect.y, maxX, maxY);
+      }
+      // 若過濾後仍有像素，優先使用過濾後的平均；否則使用原始平均
+      const useFiltered = filteredCount > 0;
+      if (useFiltered || pixelCount > 0) {
+        const denom = useFiltered ? filteredCount : pixelCount;
+        const sumR = useFiltered ? filteredR : totalR;
+        const sumG = useFiltered ? filteredG : totalG;
+        const sumB = useFiltered ? filteredB : totalB;
+        const avgR = Math.round(sumR / denom);
+        const avgG = Math.round(sumG / denom);
+        const avgB = Math.round(sumB / denom);
         const intensity = (avgR + avgG + avgB) / 3;
-        
-        log('🎨 Canvas 直接檢測 RGB:', avgR, avgG, avgB, '亮度:', Math.round(intensity));
-        
+
+        log(
+          useFiltered ? '🎨 ROI 過濾後平均 RGB:' : '🎨 ROI 平均 RGB:',
+          avgR, avgG, avgB, '亮度:', Math.round(intensity),
+          useFiltered ? `(樣本數: ${filteredCount})` : `(樣本數: ${pixelCount})`
+        );
+
+        const centerX = Math.floor(samplingRect.x + samplingRect.width / 2);
+        const centerY = Math.floor(samplingRect.y + samplingRect.height / 2);
+
         const rgbData: RGBData = {
           r: avgR,
           g: avgG,
@@ -189,7 +274,7 @@ export const processImageForRGB = async (
           x: centerX,
           y: centerY
         };
-        
+
         return rgbData;
       }
       
@@ -225,5 +310,12 @@ export const defaultProcessingSettings: ProcessingSettings = {
   blurKernel: 5,
   enableEdgeDetection: true,
   enableColorDetection: true,
-  enableDetailedLogs: false
+  enableDetailedLogs: false,
+  // 新增預設值（與 App、DetectionControls 一致）
+  edgeMarginPercent: 5,
+  minEdgeMarginPx: 2,
+  whiteThreshold: 240,
+  blackThreshold: 10,
+  minSaturation: 10,
+  sampleStep: 2
 };
