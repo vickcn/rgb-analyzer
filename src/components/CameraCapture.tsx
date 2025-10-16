@@ -624,16 +624,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             // 設為可移動狀態，offset 使得中心在手指附近
             draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
           } else {
-            // 判斷是否在 ROI 右下角 16x16 區域內 -> resize
-            const handleSize = 16;
-            const inResize = startX >= roi.x + roi.width - handleSize && startX <= roi.x + roi.width &&
-                             startY >= roi.y + roi.height - handleSize && startY <= roi.y + roi.height;
-            if (inResize) {
-              draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
-            } else {
-              // move
-              draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
-            }
+            // 只支援移動，不支援拖曳調整大小
+            draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
           }
         }}
         onMouseMove={(e) => {
@@ -642,16 +634,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const x = e.clientX - rect.left; // 容器本地座標
           const y = e.clientY - rect.top;
           setRoi(prev => {
-            if (!prev) return prev;
-            if (draggingRef.current?.type === 'move') {
-              const newX = Math.max(0, Math.min(x - draggingRef.current!.offsetX, rect.width - prev.width));
-              const newY = Math.max(0, Math.min(y - draggingRef.current!.offsetY, rect.height - prev.height));
-              return { ...prev, x: newX, y: newY };
-            } else {
-              const width = Math.max(16, Math.min(x - prev.x, rect.width - prev.x));
-              const height = Math.max(16, Math.min(y - prev.y, rect.height - prev.y));
-              return { ...prev, width, height };
-            }
+            if (!prev || !draggingRef.current) return prev;
+            // 只支援移動，不支援拖曳調整大小
+            const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
+            const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
+            return { ...prev, x: newX, y: newY };
           });
         }}
         onMouseUp={() => { draggingRef.current = null; }}
@@ -672,15 +659,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             setRoi({ x, y, width: size, height: size });
             draggingRef.current = { type: 'move', offsetX: startX - x, offsetY: startY - y };
           } else {
-            // 同滑鼠：右下角 16x16 視為 resize，否則 move
-            const handleSize = 24; // 略放大手把區域以利觸控
-            const inResize = startX >= roi.x + roi.width - handleSize && startX <= roi.x + roi.width &&
-                             startY >= roi.y + roi.height - handleSize && startY <= roi.y + roi.height;
-            if (inResize) {
-              draggingRef.current = { type: 'resize', offsetX: 0, offsetY: 0 };
-            } else {
-              draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
-            }
+            // 只支援移動，不支援觸控調整大小
+            draggingRef.current = { type: 'move', offsetX: startX - roi.x, offsetY: startY - roi.y };
           }
         }}
         onTouchMove={(e) => {
@@ -692,17 +672,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const y = touch.clientY - rect.top;
           e.preventDefault();
           setRoi(prev => {
-            if (!prev) return prev;
-            if (draggingRef.current?.type === 'move') {
-              const newX = Math.max(0, Math.min(x - draggingRef.current!.offsetX, rect.width - prev.width));
-              const newY = Math.max(0, Math.min(y - draggingRef.current!.offsetY, rect.height - prev.height));
-              return { ...prev, x: newX, y: newY };
-            } else {
-              const minSize = 24; // 觸控下保持較大最小尺寸
-              const width = Math.max(minSize, Math.min(x - prev.x, rect.width - prev.x));
-              const height = Math.max(minSize, Math.min(y - prev.y, rect.height - prev.y));
-              return { ...prev, width, height };
-            }
+            if (!prev || !draggingRef.current) return prev;
+            // 只支援移動，不支援觸控調整大小
+            const newX = Math.max(0, Math.min(x - draggingRef.current.offsetX, rect.width - prev.width));
+            const newY = Math.max(0, Math.min(y - draggingRef.current.offsetY, rect.height - prev.height));
+            return { ...prev, x: newX, y: newY };
           });
         }}
         onTouchEnd={() => { draggingRef.current = null; }}
@@ -720,29 +694,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             setRoi({ x, y, width: size, height: size });
             return;
           }
-
-          e.preventDefault();
-          const scale = e.deltaY < 0 ? 0.9 : 1.1; // 向上縮小，向下放大
-
-          // 以滑鼠座標為錨點縮放 ROI
-          const mouseX = localX;
-          const mouseY = localY;
-          setRoi(prev => {
-            if (!prev) return prev;
-            const minSize = 24;
-            const maxSize = Math.min(rect.width, rect.height);
-
-            const relX = mouseX - prev.x;
-            const relY = mouseY - prev.y;
-            const newWidth = Math.max(minSize, Math.min(maxSize, prev.width * scale));
-            const newHeight = Math.max(minSize, Math.min(maxSize, prev.height * scale));
-
-            // 調整左上角使游標保持在相對同一比例位置
-            const newX = Math.max(0, Math.min(mouseX - (relX * (newWidth / prev.width)), rect.width - newWidth));
-            const newY = Math.max(0, Math.min(mouseY - (relY * (newHeight / prev.height)), rect.height - newHeight));
-
-            return { x: newX, y: newY, width: newWidth, height: newHeight };
-          });
+          // 移除滾輪縮放功能，大小由滑桿控制
         }}
       >
         <video
@@ -782,22 +734,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
               zIndex: 20,
               pointerEvents: 'none'
             }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                width: 12,
-                height: 12,
-                right: -6,
-                bottom: -6,
-                background: '#00ff88',
-                borderRadius: 2,
-                boxShadow: '0 0 0 2px #00ff88',
-                pointerEvents: 'auto',
-                cursor: 'nwse-resize'
-              }}
-            />
-          </div>
+          />
         )}
       </div>
 
@@ -830,11 +767,31 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             onChange={(e) => {
               const newSize = parseInt(e.target.value);
               setRoiSize(newSize);
+              
+              // 如果已有 ROI，即時調整其大小
+              if (roi && containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                const baseSize = Math.min(rect.width, rect.height);
+                const newPixelSize = Math.max(20, baseSize * (newSize / 100)); // 確保最小 20px
+                
+                // 保持 ROI 中心點不變，調整大小
+                const centerX = roi.x + roi.width / 2;
+                const centerY = roi.y + roi.height / 2;
+                const newX = Math.max(0, Math.min(centerX - newPixelSize / 2, rect.width - newPixelSize));
+                const newY = Math.max(0, Math.min(centerY - newPixelSize / 2, rect.height - newPixelSize));
+                
+                setRoi({
+                  x: newX,
+                  y: newY,
+                  width: newPixelSize,
+                  height: newPixelSize
+                });
+              }
+              
               log('📐 檢測框大小調整為:', newSize + '%');
             }}
           />
           <span>{roiSize}%</span>
-          <small>（只支援觸控模式）</small>
         </div>
       </div>
     </div>
