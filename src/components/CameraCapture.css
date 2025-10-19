@@ -9,6 +9,8 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 1000; /* 確保按鈕在最上層 */
 }
 
 .freeze-toggle {
@@ -25,6 +27,33 @@
 
 .freeze-toggle.active {
   background: #0aa36b;
+}
+
+.fullscreen-toggle {
+  background: linear-gradient(135deg, #ff9a56 0%, #ff6b35 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(255, 154, 86, 0.4);
+}
+
+.fullscreen-toggle:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 154, 86, 0.6);
+}
+
+.fullscreen-toggle:active {
+  transform: translateY(0);
+}
+
+.fullscreen-toggle.active {
+  background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+  box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
 }
 
 .save-image {
@@ -144,11 +173,45 @@
   justify-content: center;
 }
 
+/* 全螢幕模式樣式 */
+.camera-preview:fullscreen {
+  border-radius: 0;
+  min-height: 100vh;
+  background: #000;
+}
+
+.camera-preview:-webkit-full-screen {
+  border-radius: 0;
+  min-height: 100vh;
+  background: #000;
+}
+
+.camera-preview:-moz-full-screen {
+  border-radius: 0;
+  min-height: 100vh;
+  background: #000;
+}
+
+.camera-preview:-ms-fullscreen {
+  border-radius: 0;
+  min-height: 100vh;
+  background: #000;
+}
+
 .video-preview {
   width: 100%;
   height: auto;
   max-height: 400px;
   object-fit: contain; /* 改為 contain 避免拉伸 */
+}
+
+/* 全螢幕模式下的影片樣式 */
+.camera-preview:fullscreen .video-preview,
+.camera-preview:-webkit-full-screen .video-preview,
+.camera-preview:-moz-full-screen .video-preview,
+.camera-preview:-ms-fullscreen .video-preview {
+  max-height: 100vh;
+  height: 100vh;
 }
 
 .processing-canvas {
@@ -252,6 +315,82 @@
   text-align: right;
 }
 
+/* 浮動控制面板（全螢幕模式） */
+.floating-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1001; /* 確保在最上層 */
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.floating-controls button {
+  min-width: 140px;
+  font-size: 13px;
+  padding: 8px 16px;
+}
+
+/* RGB 資訊覆蓋層（定格時顯示） */
+.rgb-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002; /* 確保在 ROI 之上 */
+  pointer-events: none;
+}
+
+.rgb-info-card {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+}
+
+.color-swatch {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  border: 3px solid #000;
+  flex-shrink: 0;
+}
+
+.rgb-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hex-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  font-family: 'Courier New', monospace;
+}
+
+.rgb-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #666;
+  font-family: 'Courier New', monospace;
+}
+
 /* 手機端優化 */
 @media (max-width: 768px) {
   .camera-preview {
@@ -273,5 +412,35 @@
   
   .camera-placeholder p {
     font-size: 16px;
+  }
+
+  .floating-controls {
+    top: 10px;
+    right: 10px;
+    padding: 10px;
+  }
+
+  .floating-controls button {
+    min-width: 120px;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .rgb-info-card {
+    padding: 15px;
+    min-width: 180px;
+  }
+
+  .color-swatch {
+    width: 50px;
+    height: 50px;
+  }
+
+  .hex-value {
+    font-size: 16px;
+  }
+
+  .rgb-value {
+    font-size: 14px;
   }
 }

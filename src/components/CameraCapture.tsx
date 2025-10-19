@@ -41,6 +41,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const [isFrozen, setIsFrozen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastRGB, setLastRGB] = useState<RGBData | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // ROI 使用「容器內本地座標」(左上角為 0,0)
   const [roi, setRoi] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   // ROI 大小控制（用於觸控模式）
@@ -57,6 +58,44 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       console.log(message, ...args);
     }
   };
+
+  // 全螢幕切換功能
+  const toggleFullscreen = useCallback(async () => {
+    if (!containerRef.current) return;
+
+    try {
+      if (!isFullscreen) {
+        // 進入全螢幕
+        if (containerRef.current.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if ((containerRef.current as any).webkitRequestFullscreen) {
+          await (containerRef.current as any).webkitRequestFullscreen();
+        } else if ((containerRef.current as any).mozRequestFullScreen) {
+          await (containerRef.current as any).mozRequestFullScreen();
+        } else if ((containerRef.current as any).msRequestFullscreen) {
+          await (containerRef.current as any).msRequestFullscreen();
+        }
+        setIsFullscreen(true);
+        log('🖥️ 進入全螢幕模式');
+      } else {
+        // 退出全螢幕
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
+        setIsFullscreen(false);
+        log('🖥️ 退出全螢幕模式');
+      }
+    } catch (err) {
+      console.error('全螢幕切換失敗:', err);
+      setError('全螢幕功能不支援或發生錯誤');
+    }
+  }, [isFullscreen, log]);
 
   // 檢測畫面變動
   const detectFrameChange = (currentFrame: ImageData, lastFrame: ImageData | null): boolean => {
@@ -640,6 +679,31 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     }
   }, [isFrozen]);
 
+  // 監聽全螢幕狀態變化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFullscreen);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
   // 清理資源
   useEffect(() => {
     return () => {
@@ -666,6 +730,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         )}
         {isActive && (
           <>
+            <button
+              className={`fullscreen-toggle ${isFullscreen ? 'active' : ''}`}
+              onClick={toggleFullscreen}
+            >
+              {isFullscreen ? '🔳 退出全螢幕' : '🔲 全螢幕'}
+            </button>
             <button
               className={`save-image ${isSaving ? 'saving' : ''}`}
               onClick={saveRawFrame}
@@ -983,6 +1053,51 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
               pointerEvents: 'none'
             }}
           />
+        )}
+
+        {/* 全螢幕模式下的浮動控制面板 */}
+        {isFullscreen && (
+          <div className="floating-controls">
+            <button
+              className={`freeze-toggle ${isFrozen ? 'active' : ''}`}
+              onClick={() => setIsFrozen(prev => !prev)}
+            >
+              {isFrozen ? '⏯ 解除定格' : '⏸ 定格畫面'}
+            </button>
+            <button
+              className={`save-image ${isSaving ? 'saving' : ''}`}
+              onClick={saveRawFrame}
+              disabled={isSaving}
+            >
+              {isSaving ? '💾 保存中...' : '💾 保存原圖'}
+            </button>
+            <button
+              className={`save-image ${isSaving ? 'saving' : ''}`}
+              onClick={saveAnnotatedFrame}
+              disabled={isSaving}
+            >
+              {isSaving ? '💾 保存中...' : '💾 保存標註圖'}
+            </button>
+            <button
+              className={`fullscreen-toggle active`}
+              onClick={toggleFullscreen}
+            >
+              🔳 退出全螢幕
+            </button>
+          </div>
+        )}
+
+        {/* 定格時的 RGB 資訊覆蓋層 */}
+        {isFrozen && lastRGB && (
+          <div className="rgb-overlay">
+            <div className="rgb-info-card">
+              <div className="color-swatch" style={{ backgroundColor: lastRGB.hex }}></div>
+              <div className="rgb-text">
+                <div className="hex-value">HEX: {lastRGB.hex}</div>
+                <div className="rgb-value">RGB: {lastRGB.r}, {lastRGB.g}, {lastRGB.b}</div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
