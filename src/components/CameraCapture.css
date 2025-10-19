@@ -78,6 +78,46 @@
   transform: translateY(0);
 }
 
+.recording-toggle {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.recording-toggle:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
+}
+
+.recording-toggle:active {
+  transform: translateY(0);
+}
+
+.recording-toggle.recording {
+  background: linear-gradient(135deg, #ff3838 0%, #c44569 100%);
+  animation: pulse 1.5s infinite;
+  box-shadow: 0 4px 15px rgba(255, 56, 56, 0.6);
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 4px 15px rgba(255, 56, 56, 0.6);
+  }
+  50% {
+    box-shadow: 0 4px 25px rgba(255, 56, 56, 0.8);
+  }
+  100% {
+    box-shadow: 0 4px 15px rgba(255, 56, 56, 0.6);
+  }
+}
+
 .save-image:disabled {
   opacity: 0.6;
   cursor: not-allowed;

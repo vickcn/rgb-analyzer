@@ -1,0 +1,37 @@
+.rgb-3d-visualization {
+  width: 100%;
+  height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
+  overflow: hidden;
+  position: relative;
+}
+
+.rgb-3d-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #666;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.rgb-3d-controls p {
+  margin: 0;
+}
+
+.rgb-3d-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  user-select: none;
+}
