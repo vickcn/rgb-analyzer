@@ -72,6 +72,78 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
     }
   }, [detectionSettings.enableDetailedLogs]);
 
+  // 計算 RGB 資訊卡位置，智能避開 ROI
+  const getRGBInfoCardPosition = useCallback((): React.CSSProperties => {
+    if (!containerRef.current || !roi) {
+      // 沒有 ROI 時，使用預設位置（右上角）
+      return {
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        left: 'auto',
+        bottom: 'auto'
+      };
+    }
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const cardWidth = 200; // 根據 CSS 中的 min-width
+    const cardHeight = 100; // 估算高度
+    const padding = 20;
+
+    // 計算 ROI 在容器中的實際位置
+    const roiRect = {
+      left: roi.x,
+      top: roi.y,
+      right: roi.x + roi.width,
+      bottom: roi.y + roi.height
+    };
+
+    // 候選位置：四個角落
+    const candidates = [
+      { x: padding, y: padding, name: 'top-left' },
+      { x: containerRect.width - cardWidth - padding, y: padding, name: 'top-right' },
+      { x: padding, y: containerRect.height - cardHeight - padding, name: 'bottom-left' },
+      { x: containerRect.width - cardWidth - padding, y: containerRect.height - cardHeight - padding, name: 'bottom-right' }
+    ];
+
+    // 找到不與 ROI 重疊的位置
+    for (const candidate of candidates) {
+      const cardRect = {
+        left: candidate.x,
+        top: candidate.y,
+        right: candidate.x + cardWidth,
+        bottom: candidate.y + cardHeight
+      };
+
+      // 檢查是否與 ROI 重疊
+      const overlaps = !(
+        cardRect.right < roiRect.left ||
+        cardRect.left > roiRect.right ||
+        cardRect.bottom < roiRect.top ||
+        cardRect.top > roiRect.bottom
+      );
+
+      if (!overlaps) {
+        return {
+          position: 'absolute',
+          left: `${candidate.x}px`,
+          top: `${candidate.y}px`,
+          right: 'auto',
+          bottom: 'auto'
+        };
+      }
+    }
+
+    // 如果所有角落都重疊，選擇重疊最少的位置（右上角）
+    return {
+      position: 'absolute',
+      top: '20px',
+      right: '20px',
+      left: 'auto',
+      bottom: 'auto'
+    };
+  }, [roi]);
+
   // 全螢幕切換功能
   const toggleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;
@@ -797,6 +869,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
 
       <div className="camera-preview" ref={containerRef}
         onMouseDown={(e) => {
+          // 定格時禁止 ROI 調整
+          if (isFrozen) {
+            log('🚫 定格模式下禁止調整 ROI');
+            return;
+          }
+          
           if (!containerRef.current) return;
           const rect = containerRef.current.getBoundingClientRect();
           const startX = e.clientX - rect.left; // 轉為容器本地座標
@@ -894,6 +972,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         onMouseUp={() => { draggingRef.current = null; }}
         onMouseLeave={() => { draggingRef.current = null; }}
         onTouchStart={(e) => {
+          // 定格時禁止 ROI 調整
+          if (isFrozen) {
+            log('🚫 定格模式下禁止觸控調整 ROI');
+            return;
+          }
+          
           if (!containerRef.current) return;
           if (e.touches.length === 0) return;
           const touch = e.touches[0];
@@ -993,6 +1077,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         onTouchEnd={() => { draggingRef.current = null; }}
         onTouchCancel={() => { draggingRef.current = null; }}
         onWheel={(e) => {
+          // 定格時禁止 ROI 調整
+          if (isFrozen) {
+            log('🚫 定格模式下禁止滾輪調整 ROI');
+            return;
+          }
+          
           if (!containerRef.current) return;
           const rect = containerRef.current.getBoundingClientRect();
           const localX = e.clientX - rect.left;
@@ -1117,7 +1207,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         {/* 定格時的 RGB 資訊覆蓋層 */}
         {isFrozen && lastRGB && (
           <div className="rgb-overlay">
-            <div className="rgb-info-card">
+            <div 
+              className="rgb-info-card"
+              style={getRGBInfoCardPosition()}
+            >
               <div className="color-swatch" style={{ backgroundColor: lastRGB.hex }}></div>
               <div className="rgb-text">
                 <div className="hex-value">HEX: {lastRGB.hex}</div>
@@ -1155,6 +1248,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
             step="5"
             value={roiSize}
             onChange={(e) => {
+              // 定格時禁止調整 ROI 大小
+              if (isFrozen) {
+                log('🚫 定格模式下禁止調整 ROI 大小');
+                return;
+              }
+              
               const newSize = parseInt(e.target.value);
               setRoiSize(newSize);
               
