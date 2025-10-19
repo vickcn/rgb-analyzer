@@ -201,6 +201,124 @@
   margin-top: 20px;
 }
 
+/* 浮動覆蓋層樣式 - 只在攝影機全螢幕時浮到上面 */
+.visualization-section.floating-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  color: white;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 正常模式樣式 - 在非全螢幕時正常顯示 */
+.visualization-section.normal-mode {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  margin-top: 20px;
+}
+
+.visualization-section.floating-overlay .visualization-header h3 {
+  color: white;
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.visualization-section.floating-overlay .export-buttons {
+  justify-content: center;
+  margin-bottom: 30px;
+}
+
+.visualization-section.floating-overlay .rgb-3d-visualization {
+  max-width: 80vw;
+  max-height: 60vh;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.visualization-section.floating-overlay .rgb-stats {
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.visualization-section.floating-overlay .rgb-stats h4 {
+  color: white;
+  margin-bottom: 15px;
+}
+
+.visualization-section.floating-overlay .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.visualization-section.floating-overlay .stat-item {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.visualization-section.floating-overlay .stat-label {
+  color: #ccc;
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.visualization-section.floating-overlay .stat-value {
+  color: white;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+/* 全螢幕模式下的 3D 視覺化樣式 */
+:fullscreen .visualization-section {
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  border-radius: 0;
+  margin-top: 0;
+  padding: 40px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+:fullscreen .visualization-header h3 {
+  color: white;
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+:fullscreen .export-buttons {
+  justify-content: center;
+  margin-bottom: 30px;
+}
+
+:fullscreen .rgb-3d-visualization {
+  max-width: 80vw;
+  max-height: 60vh;
+}
+
 .visualization-header {
   display: flex;
   justify-content: space-between;

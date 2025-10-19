@@ -14,6 +14,9 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
   const [rotationY, setRotationY] = useState(Math.PI / 6);
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [isTouching, setIsTouching] = useState(false);
+  const [lastTouchPos, setLastTouchPos] = useState({ x: 0, y: 0 });
+  const [lastTouchDistance, setLastTouchDistance] = useState(0);
 
   // 滑鼠事件處理
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -35,6 +38,61 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
 
   const handleMouseUp = () => {
     setIsDragging(false);
+  };
+
+  // 觸控事件處理
+  const getTouchDistance = (touches: React.TouchList) => {
+    if (touches.length < 2) return 0;
+    const touch1 = touches[0];
+    const touch2 = touches[1];
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const touches = e.touches;
+    
+    if (touches.length === 1) {
+      // 單指觸控 - 旋轉
+      setIsTouching(true);
+      setLastTouchPos({ x: touches[0].clientX, y: touches[0].clientY });
+    } else if (touches.length === 2) {
+      // 雙指觸控 - 縮放
+      setIsTouching(true);
+      setLastTouchDistance(getTouchDistance(touches));
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const touches = e.touches;
+    
+    if (touches.length === 1 && isTouching) {
+      // 單指拖拽 - 旋轉
+      const deltaX = touches[0].clientX - lastTouchPos.x;
+      const deltaY = touches[0].clientY - lastTouchPos.y;
+      
+      setRotationY(prev => prev + deltaX * 0.01);
+      setRotationX(prev => Math.max(-Math.PI/2, Math.min(Math.PI/2, prev - deltaY * 0.01)));
+      
+      setLastTouchPos({ x: touches[0].clientX, y: touches[0].clientY });
+    } else if (touches.length === 2 && isTouching) {
+      // 雙指縮放
+      const currentDistance = getTouchDistance(touches);
+      if (lastTouchDistance > 0) {
+        const scaleChange = currentDistance / lastTouchDistance;
+        setScale(prev => Math.max(0.1, Math.min(2.0, prev * scaleChange)));
+      }
+      setLastTouchDistance(currentDistance);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    setIsTouching(false);
+    setLastTouchDistance(0);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -189,13 +247,131 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
       ctx.globalAlpha = 1.0;
     };
 
-    // 繪製數據點
-    const drawDataPoints = () => {
+    // 智能資訊卡位置計算
+    const calculateInfoCardPositions = () => {
+      const infoCards: Array<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        type: 'avg' | 'point';
+        index?: number;
+      }> = [];
+
       // 計算平均值點
       const avgR = data.reduce((sum, item) => sum + item.r, 0) / data.length;
       const avgG = data.reduce((sum, item) => sum + item.g, 0) / data.length;
       const avgB = data.reduce((sum, item) => sum + item.b, 0) / data.length;
       const avgProjected = project3D(avgR, avgG, avgB);
+
+      // 計算平均值資訊卡尺寸
+      ctx.font = 'bold 10px Arial';
+      const avgText = `平均值: RGB(${Math.round(avgR)},${Math.round(avgG)},${Math.round(avgB)})`;
+      const avgTextWidth = ctx.measureText(avgText).width;
+      const avgBoxWidth = avgTextWidth + 12;
+      const avgBoxHeight = 16;
+
+      // 為平均值資訊卡尋找最佳位置
+      const avgPositions = [
+        { x: avgProjected.x - avgBoxWidth / 2, y: avgProjected.y - 30 }, // 上方
+        { x: avgProjected.x - avgBoxWidth / 2, y: avgProjected.y + 20 }, // 下方
+        { x: avgProjected.x - avgBoxWidth - 10, y: avgProjected.y - avgBoxHeight / 2 }, // 左方
+        { x: avgProjected.x + 10, y: avgProjected.y - avgBoxHeight / 2 }, // 右方
+      ];
+
+      let avgBoxX = avgPositions[0].x;
+      let avgBoxY = avgPositions[0].y;
+
+      // 檢查平均值資訊卡位置是否與畫布邊界衝突
+      for (const pos of avgPositions) {
+        if (pos.x >= 0 && pos.x + avgBoxWidth <= canvas.width && 
+            pos.y >= 0 && pos.y + avgBoxHeight <= canvas.height) {
+          avgBoxX = pos.x;
+          avgBoxY = pos.y;
+          break;
+        }
+      }
+
+      infoCards.push({
+        x: avgBoxX,
+        y: avgBoxY,
+        width: avgBoxWidth,
+        height: avgBoxHeight,
+        type: 'avg'
+      });
+
+      // 為每個數據點計算資訊卡位置
+      data.forEach((point, index) => {
+        const projected = project3D(point.r, point.g, point.b);
+        const text = `#${index + 1}: RGB(${point.r},${point.g},${point.b})`;
+        ctx.font = '9px Arial';
+        const textWidth = ctx.measureText(text).width;
+        const boxWidth = textWidth + 8;
+        const boxHeight = 14;
+
+        // 為數據點資訊卡尋找最佳位置
+        const pointPositions = [
+          { x: projected.x - boxWidth / 2, y: projected.y - 25 }, // 上方
+          { x: projected.x - boxWidth / 2, y: projected.y + 15 }, // 下方
+          { x: projected.x - boxWidth - 10, y: projected.y - boxHeight / 2 }, // 左方
+          { x: projected.x + 10, y: projected.y - boxHeight / 2 }, // 右方
+        ];
+
+        let boxX = pointPositions[0].x;
+        let boxY = pointPositions[0].y;
+
+        // 檢查與其他資訊卡的衝突
+        for (const pos of pointPositions) {
+          const newCard = {
+            x: pos.x,
+            y: pos.y,
+            width: boxWidth,
+            height: boxHeight,
+            type: 'point' as const,
+            index
+          };
+
+          let hasCollision = false;
+          for (const existingCard of infoCards) {
+            if (isColliding(newCard, existingCard)) {
+              hasCollision = true;
+              break;
+            }
+          }
+
+          // 檢查畫布邊界
+          if (!hasCollision && pos.x >= 0 && pos.x + boxWidth <= canvas.width && 
+              pos.y >= 0 && pos.y + boxHeight <= canvas.height) {
+            boxX = pos.x;
+            boxY = pos.y;
+            break;
+          }
+        }
+
+        infoCards.push({
+          x: boxX,
+          y: boxY,
+          width: boxWidth,
+          height: boxHeight,
+          type: 'point',
+          index
+        });
+      });
+
+      return { infoCards, avgProjected, avgR, avgG, avgB, avgText };
+    };
+
+    // 檢查兩個資訊卡是否碰撞
+    const isColliding = (card1: any, card2: any) => {
+      return !(card1.x + card1.width < card2.x || 
+               card2.x + card2.width < card1.x || 
+               card1.y + card1.height < card2.y || 
+               card2.y + card2.height < card1.y);
+    };
+
+    // 繪製數據點
+    const drawDataPoints = () => {
+      const { infoCards, avgProjected, avgR, avgG, avgB, avgText } = calculateInfoCardPositions();
 
       // 繪製平均值點（較大，紅色邊框）
       ctx.beginPath();
@@ -206,29 +382,19 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // 添加平均值標籤和RGB值顯示框
-      const avgLabelY = avgProjected.y - 20;
-      const avgText = `平均值: RGB(${Math.round(avgR)},${Math.round(avgG)},${Math.round(avgB)})`;
-      
-      // 繪製平均值顯示框
-      ctx.font = 'bold 10px Arial';
-      const avgTextWidth = ctx.measureText(avgText).width;
-      const avgBoxWidth = avgTextWidth + 12;
-      const avgBoxHeight = 16;
-      const avgBoxX = avgProjected.x - avgBoxWidth / 2;
-      const avgBoxY = avgLabelY - avgBoxHeight / 2;
-      
-      // 繪製平均值背景框（紅色邊框）
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
-      ctx.fillRect(avgBoxX, avgBoxY, avgBoxWidth, avgBoxHeight);
-      ctx.strokeStyle = '#ff0000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(avgBoxX, avgBoxY, avgBoxWidth, avgBoxHeight);
-      
-      // 繪製平均值文字
-      ctx.fillStyle = '#ff0000';
-      ctx.textAlign = 'center';
-      ctx.fillText(avgText, avgProjected.x, avgLabelY + 4);
+      // 繪製平均值資訊卡
+      const avgCard = infoCards.find(card => card.type === 'avg');
+      if (avgCard) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+        ctx.fillRect(avgCard.x, avgCard.y, avgCard.width, avgCard.height);
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(avgCard.x, avgCard.y, avgCard.width, avgCard.height);
+        
+        ctx.fillStyle = '#ff0000';
+        ctx.textAlign = 'center';
+        ctx.fillText(avgText, avgCard.x + avgCard.width / 2, avgCard.y + avgCard.height / 2 + 4);
+      }
 
       // 繪製數據點
       console.log('🎯 開始繪製數據點，總數:', data.length);
@@ -253,29 +419,23 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // 添加點標籤和RGB值顯示框
-        const labelY = projected.y - 15;
-        
-        // 繪製RGB值顯示框
-        const text = `#${index + 1}: RGB(${point.r},${point.g},${point.b})`;
-        ctx.font = '9px Arial';
-        const textWidth = ctx.measureText(text).width;
-        const boxWidth = textWidth + 8;
-        const boxHeight = 14;
-        const boxX = projected.x - boxWidth / 2;
-        const boxY = labelY - boxHeight / 2;
-        
-        // 繪製背景框
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-        ctx.strokeStyle = `rgb(${point.r}, ${point.g}, ${point.b})`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-        
-        // 繪製RGB值文字
-        ctx.fillStyle = '#333';
-        ctx.textAlign = 'center';
-        ctx.fillText(text, projected.x, labelY + 3);
+        // 繪製數據點資訊卡
+        const pointCard = infoCards.find(card => card.type === 'point' && card.index === index);
+        if (pointCard) {
+          const text = `#${index + 1}: RGB(${point.r},${point.g},${point.b})`;
+          
+          // 繪製背景框
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.fillRect(pointCard.x, pointCard.y, pointCard.width, pointCard.height);
+          ctx.strokeStyle = `rgb(${point.r}, ${point.g}, ${point.b})`;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(pointCard.x, pointCard.y, pointCard.width, pointCard.height);
+          
+          // 繪製RGB值文字
+          ctx.fillStyle = '#333';
+          ctx.textAlign = 'center';
+          ctx.fillText(text, pointCard.x + pointCard.width / 2, pointCard.y + pointCard.height / 2 + 3);
+        }
 
         // 繪製到平均值的連線（淺色）
         ctx.beginPath();
@@ -342,16 +502,25 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
   return (
     <div className="rgb-3d-visualization">
       <div className="rgb-3d-controls">
-        <p>🖱️ 滑鼠拖拽旋轉 • 🔄 滾輪縮放</p>
+        <p>🖱️ 滑鼠拖拽旋轉 • 🔄 滾輪縮放 • 📱 觸控拖拽旋轉 • 🤏 雙指縮放</p>
       </div>
       <canvas
         ref={canvasRef}
         className="rgb-3d-canvas"
-        style={{ width: '100%', height: '300px', cursor: isDragging ? 'grabbing' : 'grab' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        style={{ 
+          width: '100%', 
+          height: '300px', 
+          cursor: isDragging ? 'grabbing' : 'grab',
+          touchAction: 'none' // 防止觸控時頁面滾動
+        }}
       />
     </div>
   );
