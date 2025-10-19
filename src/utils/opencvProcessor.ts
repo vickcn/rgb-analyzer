@@ -173,6 +173,13 @@ export const processImageForRGB = async (
         height: defaultSize
       };
 
+      log('🎯 像素採樣區域計算:', {
+        '輸入ROI': roi,
+        'Canvas尺寸': `${canvas.width}x${canvas.height}`,
+        '採樣區域': samplingRect,
+        '是否使用預設': !roi
+      });
+
       const maxX = Math.min(canvas.width, samplingRect.x + samplingRect.width);
       const maxY = Math.min(canvas.height, samplingRect.y + samplingRect.height);
 
@@ -190,6 +197,13 @@ export const processImageForRGB = async (
       const innerMaxY = Math.min(maxY, maxY - edgeMargin);
       const innerWidth = innerMaxX - innerX;
       const innerHeight = innerMaxY - innerY;
+
+      log('🔍 內縮邊界計算:', {
+        '邊距像素': edgeMargin,
+        '原始區域': `${samplingRect.x},${samplingRect.y} -> ${maxX},${maxY}`,
+        '內縮區域': `${innerX},${innerY} -> ${innerMaxX},${innerMaxY}`,
+        '內縮尺寸': `${innerWidth}x${innerHeight}`
+      });
 
       let totalR = 0, totalG = 0, totalB = 0;
       let pixelCount = 0;
@@ -261,6 +275,16 @@ export const processImageForRGB = async (
           avgR, avgG, avgB, '亮度:', Math.round(intensity),
           useFiltered ? `(樣本數: ${filteredCount})` : `(樣本數: ${pixelCount})`
         );
+
+        console.log('🎨 最終 RGB 計算結果:', {
+          'RGB值': `R:${avgR}, G:${avgG}, B:${avgB}`,
+          'HEX值': rgbToHex(avgR, avgG, avgB),
+          '亮度': Math.round(intensity),
+          '使用過濾': useFiltered,
+          '樣本數': useFiltered ? filteredCount : pixelCount,
+          '採樣區域': samplingRect,
+          '內縮區域': `${innerX},${innerY} -> ${innerMaxX},${innerMaxY}`
+        });
 
         const centerX = Math.floor(samplingRect.x + samplingRect.width / 2);
         const centerY = Math.floor(samplingRect.y + samplingRect.height / 2);

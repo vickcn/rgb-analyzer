@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import CameraCapture from './components/CameraCapture';
 import RGBDisplay from './components/RGBDisplay';
 import DetectionControls from './components/DetectionControls';
@@ -37,6 +37,9 @@ function App() {
   const [recordingData, setRecordingData] = useState<RGBData[]>([]);
   const [recordingInterval, setRecordingInterval] = useState<NodeJS.Timeout | null>(null);
   const [show3DVisualization, setShow3DVisualization] = useState(false);
+  const [shouldFreezeCamera, setShouldFreezeCamera] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isCameraFullscreen, setIsCameraFullscreen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [detectionSettings, setDetectionSettings] = useState({
     edgeThreshold1: 50,
@@ -55,10 +58,10 @@ function App() {
     sampleStep: 2
   });
 
-  const handleRGBDetected = (rgbData: RGBData) => {
+  const handleRGBDetected = useCallback((rgbData: RGBData) => {
     setCurrentRGB(rgbData);
     setDetectionHistory(prev => [rgbData, ...prev.slice(0, 49)]); // 保留最近50筆記錄
-  };
+  }, []);
 
   const clearHistory = () => {
     setDetectionHistory([]);
@@ -164,11 +167,31 @@ function App() {
     // 設置狀態
     setIsRecording(false);
     
-    // 如果有記錄到超過1筆數據，顯示3D視覺化
+    // 如果有記錄到超過1筆數據，顯示3D視覺化並定格最後一秒
     if (actualDataCount > 1) {
       console.log('🎨 準備顯示3D視覺化，數據筆數:', actualDataCount);
-      setShow3DVisualization(true);
-      console.log('✅ 3D視覺化狀態已設置為顯示');
+      console.log('  - 當前攝影機全螢幕狀態:', isCameraFullscreen);
+      console.log('  - 3D視覺化將以', isCameraFullscreen ? '浮動覆蓋層' : '正常模式', '顯示');
+      
+      // 使用 setTimeout 確保 recordingData 狀態已更新
+      setTimeout(() => {
+        setShow3DVisualization(true);
+        console.log('✅ 3D視覺化狀態已設置為顯示');
+        console.log('  - show3DVisualization: true');
+        console.log('  - recordingData.length:', recordingData.length);
+        console.log('  - isCameraFullscreen:', isCameraFullscreen);
+        console.log('  - 預期顯示模式:', isCameraFullscreen ? 'floating-overlay (浮動到全螢幕之上)' : 'normal-mode (正常顯示)');
+        
+        // 定格最後一秒的狀況
+        console.log('🎬 定格最後一秒的狀況');
+        setShouldFreezeCamera(true);
+        
+        // 3秒後自動解除定格（可選）
+        setTimeout(() => {
+          console.log('⏯️ 自動解除定格');
+          setShouldFreezeCamera(false);
+        }, 3000);
+      }, 100); // 給狀態更新一點時間
     } else {
       console.log('⚠️ 記錄數據不足，無法顯示3D視覺化 (需要超過1筆)');
     }
@@ -279,6 +302,111 @@ function App() {
     }
   }, [show3DVisualization, recordingData.length]);
 
+  // 攝影機全螢幕狀態回調
+  const handleCameraFullscreenChange = useCallback((isFullscreen: boolean) => {
+    setIsCameraFullscreen(isFullscreen);
+    console.log('📺 App.tsx - 攝影機全螢幕狀態變化:', isFullscreen);
+  }, []);
+
+  // 關閉 3D 視覺化回調
+  const handleClose3DVisualization = useCallback(() => {
+    console.log('🔄 App.tsx - 關閉 3D 視覺化');
+    setShow3DVisualization(false);
+  }, []);
+
+  // 調試3D視覺化顯示條件
+  useEffect(() => {
+    console.log('🔍 3D視覺化顯示條件檢查:');
+    console.log('  - show3DVisualization:', show3DVisualization);
+    console.log('  - recordingData.length:', recordingData.length);
+    console.log('  - 條件結果:', show3DVisualization && recordingData.length > 1);
+    console.log('  - isCameraFullscreen (App state):', isCameraFullscreen);
+    console.log('  - document.fullscreenElement (Browser API):', document.fullscreenElement);
+    console.log('  - 狀態是否一致:', isCameraFullscreen === !!document.fullscreenElement);
+    
+    // 檢查 3D 視覺化是否應該顯示
+    if (show3DVisualization && recordingData.length > 1) {
+      console.log('🎨 3D視覺化應該顯示');
+      console.log('  - 顯示模式:', isCameraFullscreen ? '浮動覆蓋層 (floating-overlay)' : '正常模式 (normal-mode)');
+      
+      if (isCameraFullscreen) {
+        console.log('📺 攝影機全螢幕模式 - 3D視覺化應該浮動到全螢幕畫布之上');
+        console.log('  - CSS 類別: floating-overlay');
+        console.log('  - z-index: 9999 (最高層級)');
+        console.log('  - 位置: position: fixed, top: 0, left: 0');
+        console.log('  - 尺寸: width: 100vw, height: 100vh');
+      } else {
+        console.log('📱 正常模式 - 3D視覺化正常顯示在頁面中');
+        console.log('  - CSS 類別: normal-mode');
+        console.log('  - 位置: 正常文檔流');
+      }
+    } else {
+      console.log('❌ 3D視覺化不應該顯示');
+      if (!show3DVisualization) console.log('  - 原因: show3DVisualization = false');
+      if (recordingData.length <= 1) console.log('  - 原因: recordingData.length <= 1');
+    }
+  }, [show3DVisualization, recordingData.length, isCameraFullscreen]);
+
+  // 記錄 3D 視覺化渲染狀態
+  useEffect(() => {
+    if (show3DVisualization && recordingData.length > 1) {
+      console.log('🎨 3D視覺化正在渲染:', {
+        show3DVisualization,
+        recordingDataLength: recordingData.length,
+        isCameraFullscreen,
+        className: isCameraFullscreen ? 'floating-overlay' : 'normal-mode',
+        shouldFloat: isCameraFullscreen,
+        renderTime: new Date().toISOString()
+      });
+      
+      if (isCameraFullscreen) {
+        console.log('📺 3D視覺化應該浮動到全螢幕畫布之上');
+        console.log('  - 內聯樣式已應用: position: fixed, zIndex: 9999');
+        console.log('  - 覆蓋範圍: 100vw × 100vh');
+        console.log('  - 背景: rgba(0, 0, 0, 0.95)');
+        
+        // 檢查 DOM 元素是否真的存在
+        setTimeout(() => {
+          const visualizationElement = document.querySelector('.visualization-section.floating-overlay');
+          if (visualizationElement) {
+            const rect = visualizationElement.getBoundingClientRect();
+            const computedStyle = window.getComputedStyle(visualizationElement);
+            console.log('🔍 DOM 元素檢查:');
+            console.log('  - 元素存在:', !!visualizationElement);
+            console.log('  - 位置:', { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+            console.log('  - 樣式:', {
+              position: computedStyle.position,
+              zIndex: computedStyle.zIndex,
+              display: computedStyle.display,
+              visibility: computedStyle.visibility,
+              opacity: computedStyle.opacity
+            });
+            console.log('  - 是否可見:', rect.width > 0 && rect.height > 0);
+          } else {
+            console.log('❌ DOM 元素不存在: .visualization-section.floating-overlay');
+          }
+        }, 100);
+      }
+    }
+  }, [show3DVisualization, recordingData.length, isCameraFullscreen]);
+
+  // 監聽全螢幕狀態變化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -298,6 +426,10 @@ function App() {
             onStopRecording={stopRecording}
             recordingData={recordingData}
             canvasRef={canvasRef}
+            shouldFreeze={shouldFreezeCamera}
+            onFullscreenChange={handleCameraFullscreenChange}
+            show3DVisualization={show3DVisualization}
+            onClose3DVisualization={handleClose3DVisualization}
           />
         </div>
 
@@ -325,9 +457,25 @@ function App() {
       </main>
 
 
-      {/* 3D RGB視覺化 - 整合到主介面 */}
+      {/* 3D RGB視覺化 - 只在攝影機全螢幕時浮動顯示 */}
       {show3DVisualization && recordingData.length > 1 && (
-        <div className="visualization-section">
+        <div 
+          className={`visualization-section ${isCameraFullscreen ? 'floating-overlay' : 'normal-mode'}`}
+          style={{
+            // 添加內聯樣式以便調試
+            ...(isCameraFullscreen && {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              zIndex: 99999,
+              backgroundColor: 'rgba(255, 0, 0, 0.8)',
+              border: '5px solid yellow',
+              pointerEvents: 'auto'
+            })
+          }}
+        >
           <div className="visualization-header">
             <h3>🎨 RGB 3D 視覺化報告</h3>
             <div className="export-buttons">
