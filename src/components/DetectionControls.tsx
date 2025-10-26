@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './DetectionControls.css';
+import { ColorDisplayMode } from '../App';
 
 interface DetectionControlsProps {
   settings: {
@@ -19,11 +20,15 @@ interface DetectionControlsProps {
     sampleStep: number;
   };
   onSettingsChange: (settings: any) => void;
+  colorDisplayMode: ColorDisplayMode;
+  onColorDisplayModeChange: (mode: ColorDisplayMode) => void;
 }
 
 const DetectionControls: React.FC<DetectionControlsProps> = ({
   settings,
-  onSettingsChange
+  onSettingsChange,
+  colorDisplayMode,
+  onColorDisplayModeChange
 }) => {
   const [isMainPanelExpanded, setIsMainPanelExpanded] = useState(false);
   const [isDetectionModeExpanded, setIsDetectionModeExpanded] = useState(false);
@@ -93,6 +98,31 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
             </div>
             {isDetectionModeExpanded && (
               <div className="control-group-content">
+                {/* 色度演算模式選擇 */}
+                <div className="mode-selector">
+                  <label className="mode-selector-label">
+                    <span className="mode-label-text">🎨 色度演算模式</span>
+                    <select 
+                      value={colorDisplayMode}
+                      onChange={(e) => onColorDisplayModeChange(e.target.value as ColorDisplayMode)}
+                      className="mode-select"
+                    >
+                      <option value="rgb">RGB 模式</option>
+                      <option value="hsv">HSV 模式</option>
+                      <option value="hsl">HSL 模式</option>
+                      <option value="colortemp">色溫模式</option>
+                      <option value="all">全部顯示</option>
+                    </select>
+                  </label>
+                  <div className="mode-description">
+                    {colorDisplayMode === 'rgb' && '顯示紅、綠、藍三原色數值'}
+                    {colorDisplayMode === 'hsv' && '顯示色相、飽和度、明度'}
+                    {colorDisplayMode === 'hsl' && '顯示色相、飽和度、亮度'}
+                    {colorDisplayMode === 'colortemp' && '顯示色溫（Kelvin）'}
+                    {colorDisplayMode === 'all' && '顯示所有色度資訊'}
+                  </div>
+                </div>
+
                 <div className="toggle-controls">
                   <label className="toggle-item">
                     <input

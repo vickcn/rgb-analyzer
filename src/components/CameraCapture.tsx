@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { RGBData } from '../App';
+import { RGBData, ColorDisplayMode } from '../App';
 import { processImageForRGB } from '../utils/opencvProcessor';
+import { rgbToHSV, rgbToHSL, rgbToColorTemp } from '../utils/colorConversion';
 import RGB3DVisualization from './RGB3DVisualization';
 import './CameraCapture.css';
 
@@ -33,6 +34,12 @@ interface CameraCaptureProps {
   onFullscreenChange?: (isFullscreen: boolean) => void;
   show3DVisualization?: boolean;
   onClose3DVisualization?: () => void;
+  colorDisplayMode?: ColorDisplayMode;
+  // Google Sheets 相關
+  isLoggedIn?: boolean;
+  userInfo?: { email: string; name: string; accessToken: string } | null;
+  currentSpreadsheetId?: string | null;
+  onSaveToDatabase?: (rgbData: RGBData) => Promise<void>;
 }
 
 const CameraCapture: React.FC<CameraCaptureProps> = ({
@@ -49,10 +56,82 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   onFullscreenChange,
   show3DVisualization = false,
   onClose3DVisualization,
+  colorDisplayMode = 'colortemp',
+  isLoggedIn = false,
+  userInfo = null,
+  currentSpreadsheetId = null,
+  onSaveToDatabase
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 根據色度模式格式化顯示文字
+  const formatColorInfo = useCallback((rgbData: RGBData, mode: ColorDisplayMode): string[] => {
+    const lines: string[] = [];
+    
+    switch (mode) {
+      case 'rgb':
+        lines.push(`RGB: ${rgbData.r}, ${rgbData.g}, ${rgbData.b}`);
+        lines.push(`HEX: ${rgbData.hex}`);
+        break;
+        
+      case 'hsv':
+        const hsv = rgbData.hsv_h !== undefined ? 
+          { h: rgbData.hsv_h, s: rgbData.hsv_s!, v: rgbData.hsv_v! } : 
+          rgbToHSV(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`HSV: ${hsv.h}°, ${hsv.s}%, ${hsv.v}%`);
+        lines.push(`色相: ${hsv.h}°`);
+        lines.push(`飽和度: ${hsv.s}%`);
+        lines.push(`明度: ${hsv.v}%`);
+        break;
+        
+      case 'hsl':
+        const hsl = rgbData.hsl_h !== undefined ? 
+          { h: rgbData.hsl_h, s: rgbData.hsl_s!, l: rgbData.hsl_l! } : 
+          rgbToHSL(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`HSL: ${hsl.h}°, ${hsl.s}%, ${hsl.l}%`);
+        lines.push(`色相: ${hsl.h}°`);
+        lines.push(`飽和度: ${hsl.s}%`);
+        lines.push(`亮度: ${hsl.l}%`);
+        break;
+        
+      case 'colortemp':
+        const colorTemp = rgbData.colorTemp !== undefined ? 
+          { kelvin: rgbData.colorTemp, description: rgbData.colorTempDesc!, category: rgbData.colorTempCategory! } : 
+          rgbToColorTemp(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`色溫: ${colorTemp.kelvin}K`);
+        lines.push(`${colorTemp.description}`);
+        lines.push(`類別: ${colorTemp.category}`);
+        break;
+        
+      case 'all':
+        // RGB
+        lines.push(`RGB: ${rgbData.r}, ${rgbData.g}, ${rgbData.b}`);
+        lines.push(`HEX: ${rgbData.hex}`);
+        
+        // HSV
+        const hsvAll = rgbData.hsv_h !== undefined ? 
+          { h: rgbData.hsv_h, s: rgbData.hsv_s!, v: rgbData.hsv_v! } : 
+          rgbToHSV(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`HSV: ${hsvAll.h}°, ${hsvAll.s}%, ${hsvAll.v}%`);
+        
+        // HSL
+        const hslAll = rgbData.hsl_h !== undefined ? 
+          { h: rgbData.hsl_h, s: rgbData.hsl_s!, l: rgbData.hsl_l! } : 
+          rgbToHSL(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`HSL: ${hslAll.h}°, ${hslAll.s}%, ${hslAll.l}%`);
+        
+        // 色溫
+        const colorTempAll = rgbData.colorTemp !== undefined ? 
+          { kelvin: rgbData.colorTemp, description: rgbData.colorTempDesc!, category: rgbData.colorTempCategory! } : 
+          rgbToColorTemp(rgbData.r, rgbData.g, rgbData.b);
+        lines.push(`色溫: ${colorTempAll.kelvin}K (${colorTempAll.description})`);
+        break;
+    }
+    
+    return lines;
+  }, []);
   
   // 使用外部傳入的 ref 或內部 ref
   const canvasRef = externalCanvasRef || internalCanvasRef;
@@ -72,6 +151,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [lastRGB, setLastRGB] = useState<RGBData | null>(null);
   const [averageRGB, setAverageRGB] = useState<RGBData | null>(null);
+  const [isSavingToDatabase, setIsSavingToDatabase] = useState(false);
   // ROI 使用「容器內本地座標」(左上角為 0,0)
   const [roi, setRoi] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   // ROI 大小控制（用於觸控模式）
@@ -762,8 +842,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       ctx.font = `${fontSize}px Arial`;
       const textLines: string[] = [];
       if (lastRGB) {
-        textLines.push(`HEX: ${lastRGB.hex}`);
-        textLines.push(`RGB: ${lastRGB.r}, ${lastRGB.g}, ${lastRGB.b}`);
+        const colorInfoLines = formatColorInfo(lastRGB, colorDisplayMode);
+        textLines.push(...colorInfoLines);
       } else {
         textLines.push('尚無 RGB 數據');
       }
@@ -863,6 +943,25 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
       setIsSaving(false);
     }
   }, [isActive, roi, lastRGB, log, canvasRef]);
+
+  // 儲存到資料庫
+  const handleSaveToDatabase = useCallback(async () => {
+    if (!lastRGB || !onSaveToDatabase) {
+      console.warn('無法儲存到資料庫：缺少 RGB 數據或回調函數');
+      return;
+    }
+
+    setIsSavingToDatabase(true);
+    try {
+      await onSaveToDatabase(lastRGB);
+      console.log('✅ 已儲存到資料庫');
+    } catch (error) {
+      console.error('❌ 儲存到資料庫失敗:', error);
+      setError('儲存到資料庫失敗');
+    } finally {
+      setIsSavingToDatabase(false);
+    }
+  }, [lastRGB, onSaveToDatabase]);
 
   // 同步 ROI 狀態至 ref，供處理迴圈即時讀取
   useEffect(() => {
@@ -1102,9 +1201,9 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
           const fontSize = Math.max(14, Math.floor(swatchSize * 0.9));
           ctx.font = `${fontSize}px Arial`;
           
+          const colorInfoLines = formatColorInfo(averageRGB, colorDisplayMode);
           const textLines = [
-            `平均 RGB: ${averageRGB.r}, ${averageRGB.g}, ${averageRGB.b}`,
-            `HEX: ${averageRGB.hex}`,
+            ...colorInfoLines,
             `數據筆數: ${recordingData.length}`
           ];
           
@@ -1381,6 +1480,19 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
               >
                 {isRecording ? `🔴 停止紀錄 (${recordingData.length}/10)` : '⏺️ 開始時段紀錄'}
               </button>
+              
+              {/* 儲存至資料庫按鈕 */}
+              {isLoggedIn && currentSpreadsheetId && lastRGB && (
+                <button
+                  className={`save-database ${isSavingToDatabase ? 'saving' : ''}`}
+                  onClick={handleSaveToDatabase}
+                  disabled={isSaving || isSavingToDatabase}
+                  title="將當前檢測結果儲存到 Google Sheets"
+                >
+                  {isSavingToDatabase ? '💾 儲存中...' : '🗂️ 儲存至資料庫'}
+                </button>
+              )}
+              
               <button
                 className={`fullscreen-toggle ${isFullscreen ? 'active' : ''}`}
                 onClick={toggleFullscreen}
@@ -1452,6 +1564,19 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
                 >
                   {isRecording ? `🔴 停止紀錄 (${recordingData.length}/10)` : '⏺️ 開始時段紀錄'}
                 </button>
+                
+                {/* 儲存至資料庫按鈕（全螢幕模式） */}
+                {isLoggedIn && currentSpreadsheetId && lastRGB && (
+                  <button
+                    className={`save-database ${isSavingToDatabase ? 'saving' : ''}`}
+                    onClick={handleSaveToDatabase}
+                    disabled={isSaving || isSavingToDatabase}
+                    title="將當前檢測結果儲存到 Google Sheets"
+                  >
+                    {isSavingToDatabase ? '💾 儲存中...' : '🗂️ 儲存至資料庫'}
+                  </button>
+                )}
+                
                 <button
                   className={`fullscreen-toggle ${isFullscreen ? 'active' : ''}`}
                   onClick={toggleFullscreen}
@@ -1471,31 +1596,30 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({
         )}
 
         {/* 全螢幕定格狀態下的 RGB 資訊卡 */}
-        {isFullscreen && isFrozen && lastRGB && (
-          <div 
-            className="fullscreen-rgb-info-card"
-            style={{
-              position: 'fixed',
-              ...getOptimalInfoCardPosition()
-            }}
-          >
-            <div className="rgb-swatch" style={{ backgroundColor: lastRGB.hex }}></div>
-            <div className="rgb-details">
-              <div className="rgb-values">
-                <span className="rgb-label">R:</span>
-                <span className="rgb-value">{lastRGB.r}</span>
-                <span className="rgb-label">G:</span>
-                <span className="rgb-value">{lastRGB.g}</span>
-                <span className="rgb-label">B:</span>
-                <span className="rgb-value">{lastRGB.b}</span>
-              </div>
-              <div className="hex-value">{lastRGB.hex}</div>
-              <div className="timestamp">
-                {new Date(lastRGB.timestamp).toLocaleTimeString()}
+        {isFullscreen && isFrozen && lastRGB && (() => {
+          const infoLines = formatColorInfo(lastRGB, colorDisplayMode);
+          return (
+            <div 
+              className="fullscreen-rgb-info-card"
+              style={{
+                position: 'fixed',
+                ...getOptimalInfoCardPosition()
+              }}
+            >
+              <div className="rgb-swatch" style={{ backgroundColor: lastRGB.hex }}></div>
+              <div className="rgb-details">
+                {infoLines.map((line, index) => (
+                  <div key={index} style={{ fontSize: index === 0 ? '18px' : '14px', fontWeight: index === 0 ? 700 : 500 }}>
+                    {line}
+                  </div>
+                ))}
+                <div className="timestamp" style={{ marginTop: '8px', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)' }}>
+                  {new Date(lastRGB.timestamp).toLocaleTimeString()}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         
         {/* 攝影機內容 */}
         <div

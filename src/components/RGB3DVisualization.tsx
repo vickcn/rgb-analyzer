@@ -1,13 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { RGBData } from '../App';
+import { RGBData, ColorDisplayMode } from '../App';
+import { rgbToHSV, rgbToHSL, rgbToColorTemp } from '../utils/colorConversion';
 import './RGB3DVisualization.css';
 
 interface RGB3DVisualizationProps {
   data: RGBData[];
   isVisible: boolean;
+  colorDisplayMode?: ColorDisplayMode;
 }
 
-const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible }) => {
+const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible, colorDisplayMode = 'rgb' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [scale, setScale] = useState(0.25);
   const [rotationX, setRotationX] = useState(Math.PI / 4);
@@ -101,6 +103,82 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
     setScale((prev: number) => Math.max(0.1, Math.min(2.0, prev * delta)));
   };
 
+  // 根據色度模式轉換座標
+  const getCoordinates = (rgbData: RGBData) => {
+    switch (colorDisplayMode) {
+      case 'rgb':
+        return { x: rgbData.r, y: rgbData.g, z: rgbData.b };
+        
+      case 'hsv':
+        const hsv = rgbData.hsv_h !== undefined ? 
+          { h: rgbData.hsv_h, s: rgbData.hsv_s!, v: rgbData.hsv_v! } : 
+          rgbToHSV(rgbData.r, rgbData.g, rgbData.b);
+        return { 
+          x: hsv.h * 255 / 360,  // 色相 0-360° 映射到 0-255
+          y: hsv.s * 255 / 100,  // 飽和度 0-100% 映射到 0-255
+          z: hsv.v * 255 / 100   // 明度 0-100% 映射到 0-255
+        };
+        
+      case 'hsl':
+        const hsl = rgbData.hsl_h !== undefined ? 
+          { h: rgbData.hsl_h, s: rgbData.hsl_s!, l: rgbData.hsl_l! } : 
+          rgbToHSL(rgbData.r, rgbData.g, rgbData.b);
+        return { 
+          x: hsl.h * 255 / 360,  // 色相 0-360° 映射到 0-255
+          y: hsl.s * 255 / 100,  // 飽和度 0-100% 映射到 0-255
+          z: hsl.l * 255 / 100   // 亮度 0-100% 映射到 0-255
+        };
+        
+      case 'colortemp':
+        const colorTemp = rgbData.colorTemp !== undefined ? 
+          rgbData.colorTemp : 
+          rgbToColorTemp(rgbData.r, rgbData.g, rgbData.b).kelvin;
+        // 色溫模式：X=色溫(1000-10000K映射到0-255), Y=飽和度, Z=明度
+        const hsvForTemp = rgbData.hsv_h !== undefined ? 
+          { h: rgbData.hsv_h, s: rgbData.hsv_s!, v: rgbData.hsv_v! } : 
+          rgbToHSV(rgbData.r, rgbData.g, rgbData.b);
+        return {
+          x: Math.min(255, Math.max(0, (colorTemp - 1000) * 255 / 9000)), // 1000-10000K 映射到 0-255
+          y: hsvForTemp.s * 255 / 100,
+          z: hsvForTemp.v * 255 / 100
+        };
+        
+      default:
+        return { x: rgbData.r, y: rgbData.g, z: rgbData.b };
+    }
+  };
+
+  // 獲取軸標籤
+  const getAxisLabels = () => {
+    switch (colorDisplayMode) {
+      case 'rgb':
+        return { x: 'R', y: 'G', z: 'B' };
+      case 'hsv':
+        return { x: 'H (色相)', y: 'S (飽和度)', z: 'V (明度)' };
+      case 'hsl':
+        return { x: 'H (色相)', y: 'S (飽和度)', z: 'L (亮度)' };
+      case 'colortemp':
+        return { x: 'T (色溫)', y: 'S (飽和度)', z: 'V (明度)' };
+      default:
+        return { x: 'X', y: 'Y', z: 'Z' };
+    }
+  };
+
+  // 獲取軸顏色
+  const getAxisColors = () => {
+    switch (colorDisplayMode) {
+      case 'rgb':
+        return { x: '#ff0000', y: '#00ff00', z: '#0000ff' };
+      case 'hsv':
+      case 'hsl':
+        return { x: '#ff6b6b', y: '#4ecdc4', z: '#45b7d1' };
+      case 'colortemp':
+        return { x: '#ff9500', y: '#4ecdc4', z: '#45b7d1' }; // 橙色代表色溫
+      default:
+        return { x: '#666', y: '#666', z: '#666' };
+    }
+  };
+
   useEffect(() => {
     if (!isVisible || data.length === 0) {
       return;
@@ -162,42 +240,43 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
       };
     };
 
-    // 繪製RGB座標軸
+    // 繪製座標軸
     const drawAxes = () => {
-      ctx.strokeStyle = '#333';
+      const axisLabels = getAxisLabels();
+      const axisColors = getAxisColors();
       ctx.lineWidth = 2;
 
-      // R軸 (紅色)
-      const rEnd = project3D(255, 0, 0);
+      // X軸
+      const xEnd = project3D(255, 0, 0);
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
-      ctx.lineTo(rEnd.x, rEnd.y);
-      ctx.strokeStyle = '#ff0000';
+      ctx.lineTo(xEnd.x, xEnd.y);
+      ctx.strokeStyle = axisColors.x;
       ctx.stroke();
 
-      // G軸 (綠色)
-      const gEnd = project3D(0, 255, 0);
+      // Y軸
+      const yEnd = project3D(0, 255, 0);
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
-      ctx.lineTo(gEnd.x, gEnd.y);
-      ctx.strokeStyle = '#00ff00';
+      ctx.lineTo(yEnd.x, yEnd.y);
+      ctx.strokeStyle = axisColors.y;
       ctx.stroke();
 
-      // B軸 (藍色)
-      const bEnd = project3D(0, 0, 255);
+      // Z軸
+      const zEnd = project3D(0, 0, 255);
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
-      ctx.lineTo(bEnd.x, bEnd.y);
-      ctx.strokeStyle = '#0000ff';
+      ctx.lineTo(zEnd.x, zEnd.y);
+      ctx.strokeStyle = axisColors.z;
       ctx.stroke();
 
       // 添加軸標籤
       ctx.fillStyle = '#333';
-      ctx.font = '14px Arial';
+      ctx.font = '12px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('R', rEnd.x + 10, rEnd.y - 10);
-      ctx.fillText('G', gEnd.x - 10, gEnd.y - 10);
-      ctx.fillText('B', bEnd.x, bEnd.y + 20);
+      ctx.fillText(axisLabels.x, xEnd.x + 15, xEnd.y - 5);
+      ctx.fillText(axisLabels.y, yEnd.x - 15, yEnd.y - 5);
+      ctx.fillText(axisLabels.z, zEnd.x, zEnd.y + 25);
     };
 
     // 繪製RGB立方體框架
@@ -259,10 +338,17 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
       }> = [];
 
       // 計算平均值點
+      // 計算平均值（使用轉換後的座標）
+      const avgCoords = data.map(item => getCoordinates(item));
+      const avgX = avgCoords.reduce((sum, coord) => sum + coord.x, 0) / avgCoords.length;
+      const avgY = avgCoords.reduce((sum, coord) => sum + coord.y, 0) / avgCoords.length;
+      const avgZ = avgCoords.reduce((sum, coord) => sum + coord.z, 0) / avgCoords.length;
+      const avgProjected = project3D(avgX, avgY, avgZ);
+      
+      // 原始RGB平均值（用於顯示）
       const avgR = data.reduce((sum, item) => sum + item.r, 0) / data.length;
       const avgG = data.reduce((sum, item) => sum + item.g, 0) / data.length;
       const avgB = data.reduce((sum, item) => sum + item.b, 0) / data.length;
-      const avgProjected = project3D(avgR, avgG, avgB);
 
       // 計算平均值資訊卡尺寸
       ctx.font = 'bold 10px Arial';
@@ -302,7 +388,8 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
 
       // 為每個數據點計算資訊卡位置
       data.forEach((point, index) => {
-        const projected = project3D(point.r, point.g, point.b);
+        const coords = getCoordinates(point);
+        const projected = project3D(coords.x, coords.y, coords.z);
         const text = `#${index + 1}: RGB(${point.r},${point.g},${point.b})`;
         ctx.font = '9px Arial';
         const textWidth = ctx.measureText(text).width;
@@ -399,8 +486,9 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
       // 繪製數據點
       console.log('🎯 開始繪製數據點，總數:', data.length);
       data.forEach((point, index) => {
-        const projected = project3D(point.r, point.g, point.b);
-        console.log(`📍 點 ${index + 1}: RGB(${point.r},${point.g},${point.b}) -> 投影(${projected.x.toFixed(1)},${projected.y.toFixed(1)})`);
+        const coords = getCoordinates(point);
+        const projected = project3D(coords.x, coords.y, coords.z);
+        console.log(`📍 點 ${index + 1}: RGB(${point.r},${point.g},${point.b}) -> 座標(${coords.x.toFixed(1)},${coords.y.toFixed(1)},${coords.z.toFixed(1)}) -> 投影(${projected.x.toFixed(1)},${projected.y.toFixed(1)})`);
         
         // 繪製陰影效果
         ctx.beginPath();
@@ -475,8 +563,8 @@ const RGB3DVisualization: React.FC<RGB3DVisualizationProps> = ({ data, isVisible
     drawCube();
     drawOrigin();
     drawDataPoints();
-    console.log('✅ 3D RGB視覺化繪製完成');
-  }, [data, isVisible, scale, rotationX, rotationY]);
+    console.log('✅ 3D視覺化繪製完成，模式:', colorDisplayMode);
+  }, [data, isVisible, scale, rotationX, rotationY, colorDisplayMode]);
 
   // 添加滾輪事件監聽器
   useEffect(() => {

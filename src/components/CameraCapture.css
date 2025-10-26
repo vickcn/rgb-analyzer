@@ -291,6 +291,62 @@
   box-shadow: 0 4px 15px rgba(255, 167, 38, 0.4);
 }
 
+/* 儲存至資料庫按鈕 */
+.save-database {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.save-database:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.save-database:active {
+  transform: translateY(0);
+}
+
+.save-database:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.save-database.saving {
+  background: linear-gradient(135deg, #ffa726 0%, #ff7043 100%);
+  box-shadow: 0 4px 15px rgba(255, 167, 38, 0.4);
+}
+
+.save-database.saving::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
 .camera-toggle {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;

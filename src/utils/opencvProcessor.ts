@@ -1,4 +1,6 @@
 import { RGBData } from '../App';
+import { rgbToHSV, rgbToHSL, rgbToColorTemp } from './colorConversion';
+import { getGlobalClassifier } from './colorClassifier';
 
 // OpenCV.js 類型定義
 declare global {
@@ -7,31 +9,112 @@ declare global {
   }
 }
 
+// 全域載入狀態追蹤
+let isOpenCVLoading = false;
+let openCVLoadPromise: Promise<void> | null = null;
+
+// 清理 OpenCV 資源（開發模式熱重載時使用）
+export const cleanupOpenCV = () => {
+  if (typeof window !== 'undefined') {
+    // 移除現有的 OpenCV script
+    const existingScript = document.getElementById('opencv-script');
+    if (existingScript) {
+      existingScript.remove();
+    }
+    
+    // 重置載入狀態
+    isOpenCVLoading = false;
+    openCVLoadPromise = null;
+    
+    // 在開發模式下，清理 window.cv（生產模式不建議）
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧹 開發模式：清理 OpenCV 資源');
+      // 不直接刪除 window.cv，因為這可能導致其他問題
+      // delete window.cv;
+    }
+  }
+};
+
 // 載入 OpenCV.js
 export const loadOpenCV = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    if (window.cv) {
-      resolve();
-      return;
-    }
+  // 如果已經載入完成
+  if (window.cv && window.cv.Mat) {
+    return Promise.resolve();
+  }
 
+  // 如果正在載入，返回現有的 Promise
+  if (isOpenCVLoading && openCVLoadPromise) {
+    return openCVLoadPromise;
+  }
+
+  // 檢查是否已經有 OpenCV script 標籤
+  const existingScript = document.querySelector('script[src*="opencv.js"]');
+  if (existingScript) {
+    console.log('🔍 發現現有的 OpenCV script，等待初始化...');
+    // 如果 script 存在，等待 OpenCV 初始化完成
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 100; // 10秒超時
+      
+      const checkInterval = setInterval(() => {
+        attempts++;
+        if (window.cv && window.cv.Mat) {
+          console.log('✅ OpenCV 已初始化完成');
+          clearInterval(checkInterval);
+          resolve();
+        } else if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          console.error('❌ OpenCV 載入超時，移除現有 script 並重試');
+          existingScript.remove();
+          isOpenCVLoading = false;
+          openCVLoadPromise = null;
+          // 遞歸重試
+          resolve(loadOpenCV());
+        }
+      }, 100);
+    });
+  }
+
+  // 開始新的載入過程
+  isOpenCVLoading = true;
+  openCVLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = 'https://docs.opencv.org/4.8.0/opencv.js';
     script.async = true;
+    script.id = 'opencv-script'; // 添加 ID 以便識別
     
     script.onload = () => {
-      window.cv.onRuntimeInitialized = () => {
-        console.log('OpenCV.js 載入成功');
-        resolve();
+      // 等待 OpenCV 運行時初始化
+      const waitForInit = () => {
+        if (window.cv && window.cv.Mat) {
+          console.log('OpenCV.js 載入並初始化成功');
+          isOpenCVLoading = false;
+          resolve();
+        } else if (window.cv) {
+          // 如果 cv 存在但還沒完全初始化
+          window.cv.onRuntimeInitialized = () => {
+            console.log('OpenCV.js 運行時初始化完成');
+            isOpenCVLoading = false;
+            resolve();
+          };
+        } else {
+          // 繼續等待
+          setTimeout(waitForInit, 50);
+        }
       };
+      waitForInit();
     };
     
     script.onerror = () => {
+      isOpenCVLoading = false;
+      openCVLoadPromise = null;
       reject(new Error('無法載入 OpenCV.js'));
     };
     
     document.head.appendChild(script);
   });
+
+  return openCVLoadPromise;
 };
 
 // 圖像處理設定介面
@@ -289,6 +372,11 @@ export const processImageForRGB = async (
         const centerX = Math.floor(samplingRect.x + samplingRect.width / 2);
         const centerY = Math.floor(samplingRect.y + samplingRect.height / 2);
 
+        // 計算 HSV、HSL、色溫
+        const hsv = rgbToHSV(avgR, avgG, avgB);
+        const hsl = rgbToHSL(avgR, avgG, avgB);
+        const colorTemp = rgbToColorTemp(avgR, avgG, avgB);
+
         const rgbData: RGBData = {
           r: avgR,
           g: avgG,
@@ -296,8 +384,45 @@ export const processImageForRGB = async (
           hex: rgbToHex(avgR, avgG, avgB),
           timestamp: Date.now(),
           x: centerX,
-          y: centerY
+          y: centerY,
+          // HSV 值
+          hsv_h: hsv.h,
+          hsv_s: hsv.s,
+          hsv_v: hsv.v,
+          // HSL 值
+          hsl_h: hsl.h,
+          hsl_s: hsl.s,
+          hsl_l: hsl.l,
+          // 色溫
+          colorTemp: colorTemp.kelvin,
+          colorTempDesc: colorTemp.description,
+          colorTempCategory: colorTemp.category
         };
+
+        // K-NN 分類（若分類器已訓練）
+        try {
+          const classifier = getGlobalClassifier();
+          if (classifier.isModelTrained()) {
+            const features = [
+              avgR, 
+              avgG, 
+              avgB, 
+              hsv.h, 
+              hsv.s, 
+              hsv.v, 
+              colorTemp.kelvin
+            ];
+            
+            const result = classifier.predict(features);
+            rgbData.className = result.className;
+            rgbData.confidence = result.confidence;
+            
+            log('🎯 K-NN 分類結果:', result.className, '信心度:', (result.confidence * 100).toFixed(1) + '%');
+          }
+        } catch (classifyError) {
+          console.warn('⚠️ K-NN 分類失敗:', classifyError);
+          // 分類失敗不影響主要功能，繼續返回 RGB 數據
+        }
 
         return rgbData;
       }

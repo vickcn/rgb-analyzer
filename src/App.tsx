@@ -4,8 +4,13 @@ import RGBDisplay from './components/RGBDisplay';
 import DetectionControls from './components/DetectionControls';
 import HistoryPanel from './components/HistoryPanel';
 import RGB3DVisualization from './components/RGB3DVisualization';
+import GoogleAuth from './components/GoogleAuth';
+import SheetsManager from './components/SheetsManager';
 import { exportToExcel, exportImages } from './utils/exportUtils';
+import { SheetInfo } from './utils/googleSheetsApi';
 import './App.css';
+
+export type ColorDisplayMode = 'rgb' | 'hsv' | 'hsl' | 'colortemp' | 'all';
 
 export interface RGBData {
   r: number;
@@ -15,9 +20,21 @@ export interface RGBData {
   timestamp: number;
   x: number;
   y: number;
-  h?: number; // HSV values (optional for backward compatibility)
-  s?: number;
-  v?: number;
+  // HSV 值
+  hsv_h?: number; // 色相 (0-360°)
+  hsv_s?: number; // 飽和度 (0-100%)
+  hsv_v?: number; // 明度 (0-100%)
+  // HSL 值
+  hsl_h?: number; // 色相 (0-360°)
+  hsl_s?: number; // 飽和度 (0-100%)
+  hsl_l?: number; // 亮度 (0-100%)
+  // 色溫
+  colorTemp?: number; // 色溫 (Kelvin)
+  colorTempDesc?: string; // 色溫描述
+  colorTempCategory?: string; // 色溫類別
+  // K-NN 分類結果
+  className?: string; // 分類結果（色光類型）
+  confidence?: number; // 分類信心度 (0-1)
 }
 
 export interface TimeIntervalRecord {
@@ -29,6 +46,13 @@ export interface TimeIntervalRecord {
   rawImage?: string; // base64 encoded raw image
 }
 
+export interface UserInfo {
+  email: string;
+  name: string;
+  picture?: string;
+  accessToken: string;
+}
+
 function App() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentRGB, setCurrentRGB] = useState<RGBData | null>(null);
@@ -38,8 +62,18 @@ function App() {
   const [recordingInterval, setRecordingInterval] = useState<NodeJS.Timeout | null>(null);
   const [show3DVisualization, setShow3DVisualization] = useState(false);
   const [shouldFreezeCamera, setShouldFreezeCamera] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCameraFullscreen, setIsCameraFullscreen] = useState(false);
+  const [colorDisplayMode, setColorDisplayMode] = useState<ColorDisplayMode>('colortemp');
+  
+  // Google 登入狀態
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [showSheetsManager, setShowSheetsManager] = useState(false);
+  
+  // Google Sheets 狀態
+  const [currentSpreadsheetId, setCurrentSpreadsheetId] = useState<string | null>(null);
+  const [currentSheetInfo, setCurrentSheetInfo] = useState<SheetInfo | null>(null);
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [detectionSettings, setDetectionSettings] = useState({
     edgeThreshold1: 50,
@@ -71,6 +105,74 @@ function App() {
     const cutoffTime = Date.now() - minutes * 60 * 1000;
     setDetectionHistory(prev => prev.filter(item => item.timestamp > cutoffTime));
   };
+
+  // Google 登入處理
+  const handleLoginSuccess = useCallback((userInfo: UserInfo) => {
+    setIsLoggedIn(true);
+    setUserInfo(userInfo);
+    console.log('✅ 用戶登入成功:', userInfo.email);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setIsLoggedIn(false);
+    setUserInfo(null);
+    setCurrentSpreadsheetId(null);
+    setCurrentSheetInfo(null);
+    setShowSheetsManager(false);
+    console.log('✅ 用戶已登出');
+  }, []);
+
+  // Sheets 管理處理
+  const handleSpreadsheetChange = useCallback((spreadsheetId: string, sheetInfo: SheetInfo) => {
+    setCurrentSpreadsheetId(spreadsheetId);
+    setCurrentSheetInfo(sheetInfo);
+    
+    // 儲存到 localStorage
+    localStorage.setItem('currentSpreadsheetId', spreadsheetId);
+    localStorage.setItem('currentSheetInfo', JSON.stringify(sheetInfo));
+    
+    console.log('✅ Sheet 已綁定:', sheetInfo.title);
+  }, []);
+
+  // 載入儲存的 Sheet 資訊
+  useEffect(() => {
+    if (isLoggedIn) {
+      const savedSpreadsheetId = localStorage.getItem('currentSpreadsheetId');
+      const savedSheetInfo = localStorage.getItem('currentSheetInfo');
+      
+      if (savedSpreadsheetId && savedSheetInfo) {
+        try {
+          const sheetInfo = JSON.parse(savedSheetInfo);
+          setCurrentSpreadsheetId(savedSpreadsheetId);
+          setCurrentSheetInfo(sheetInfo);
+        } catch (e) {
+          console.error('無法載入儲存的 Sheet 資訊:', e);
+          localStorage.removeItem('currentSpreadsheetId');
+          localStorage.removeItem('currentSheetInfo');
+        }
+      }
+    }
+  }, [isLoggedIn]);
+
+  // 儲存檢測結果到資料庫
+  const handleSaveToDatabase = useCallback(async (rgbData: RGBData) => {
+    if (!userInfo || !currentSpreadsheetId) {
+      throw new Error('未登入或未綁定 Sheet');
+    }
+
+    const { saveDetectionResult } = await import('./utils/sheetsSyncService');
+    
+    const result = await saveDetectionResult(
+      userInfo.accessToken,
+      currentSpreadsheetId,
+      rgbData,
+      userInfo.name
+    );
+
+    if (!result.success) {
+      throw new Error(result.error || '儲存失敗');
+    }
+  }, [userInfo, currentSpreadsheetId]);
 
   // 調試3D視覺化狀態
   useEffect(() => {
@@ -390,28 +492,39 @@ function App() {
     }
   }, [show3DVisualization, recordingData.length, isCameraFullscreen]);
 
-  // 監聽全螢幕狀態變化
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('msfullscreenchange', handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-    };
-  }, []);
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🎨 RGB 色光檢測器</h1>
-        <p>透過手機攝影機即時檢測RGB色光值</p>
+        <div className="header-content">
+          <div className="header-title">
+            <h1>🎨 RGB 色光檢測器</h1>
+            <p>透過手機攝影機即時檢測RGB色光值</p>
+          </div>
+          
+          {/* Google 登入與資料庫管理 */}
+          <div className="header-actions">
+            <GoogleAuth
+              isLoggedIn={isLoggedIn}
+              userInfo={userInfo}
+              onLoginSuccess={handleLoginSuccess}
+              onLogout={handleLogout}
+            />
+            
+            {isLoggedIn && (
+              <button 
+                className="database-button"
+                onClick={() => setShowSheetsManager(true)}
+                title="管理色票資料庫"
+              >
+                🗂️ 色票資料庫
+                {currentSheetInfo && (
+                  <span className="sheet-indicator">●</span>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
       </header>
 
       <main className="app-main">
@@ -430,6 +543,11 @@ function App() {
             onFullscreenChange={handleCameraFullscreenChange}
             show3DVisualization={show3DVisualization}
             onClose3DVisualization={handleClose3DVisualization}
+            colorDisplayMode={colorDisplayMode}
+            isLoggedIn={isLoggedIn}
+            userInfo={userInfo}
+            currentSpreadsheetId={currentSpreadsheetId}
+            onSaveToDatabase={handleSaveToDatabase}
           />
         </div>
 
@@ -437,6 +555,8 @@ function App() {
           <DetectionControls
             settings={detectionSettings}
             onSettingsChange={setDetectionSettings}
+            colorDisplayMode={colorDisplayMode}
+            onColorDisplayModeChange={setColorDisplayMode}
           />
         </div>
 
@@ -444,6 +564,7 @@ function App() {
           <RGBDisplay
             currentRGB={currentRGB}
             isActive={isCameraActive}
+            displayMode={colorDisplayMode}
           />
         </div>
 
@@ -510,7 +631,11 @@ function App() {
             </div>
           </div>
           
-          <RGB3DVisualization data={recordingData} isVisible={show3DVisualization} />
+          <RGB3DVisualization 
+            data={recordingData} 
+            isVisible={show3DVisualization} 
+            colorDisplayMode={colorDisplayMode}
+          />
           
           {calculateRGBStats() && (
             <div className="rgb-stats">
@@ -555,6 +680,17 @@ function App() {
       <footer className="app-footer">
         <p>使用 OpenCV.js 進行即時圖像處理</p>
       </footer>
+
+      {/* Google Sheets 管理彈窗 */}
+      {isLoggedIn && userInfo && (
+        <SheetsManager
+          isOpen={showSheetsManager}
+          onClose={() => setShowSheetsManager(false)}
+          userInfo={userInfo}
+          currentSpreadsheetId={currentSpreadsheetId}
+          onSpreadsheetChange={handleSpreadsheetChange}
+        />
+      )}
     </div>
   );
 }

@@ -4,9 +4,11 @@
   "description": "手機攝影機RGB色光檢測器",
   "private": true,
   "dependencies": {
+    "@react-oauth/google": "^0.12.2",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "gapi-script": "^1.2.0",
     "opencv-ts": "^1.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
